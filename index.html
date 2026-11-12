@@ -1,0 +1,2811 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Robotics Lab Attendance & Shift Tracker | Chirag (Owner)</title>
+  
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  
+  <!-- React 18 & ReactDOM -->
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+  
+  <!-- Babel Standalone for in-browser JSX parsing -->
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  
+  <!-- jsPDF & AutoTable for client-side PDF generation -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+  
+  <!-- Canvas Confetti for Celebration on all staff logged out -->
+  <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.3/dist/confetti.browser.min.js"></script>
+
+  <!-- Google Fonts: Inter & JetBrains Mono -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['"Plus Jakarta Sans"', 'sans-serif'],
+            mono: ['"JetBrains Mono"', 'monospace'],
+          },
+          colors: {
+            primary: {
+              50: '#eef2ff',
+              100: '#e0e7ff',
+              500: '#6366f1',
+              600: '#4f46e5',
+              700: '#4338ca',
+            }
+          }
+        }
+      }
+    }
+  </script>
+
+  <style>
+    @media print {
+      body * {
+        visibility: hidden;
+      }
+      #printable-summary, #printable-summary * {
+        visibility: visible;
+      }
+      #printable-summary {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 100%;
+        background: white !important;
+        color: black !important;
+        padding: 24px;
+      }
+      .no-print {
+        display: none !important;
+      }
+    }
+    
+    /* Custom pulse glow */
+    @keyframes pulseGlow {
+      0%, 100% { box-shadow: 0 0 14px rgba(16, 185, 129, 0.3); }
+      50% { box-shadow: 0 0 24px rgba(16, 185, 129, 0.6); }
+    }
+    .active-glow {
+      animation: pulseGlow 2.5s infinite;
+    }
+
+    @keyframes pulseAmber {
+      0%, 100% { box-shadow: 0 0 14px rgba(245, 158, 11, 0.3); }
+      50% { box-shadow: 0 0 24px rgba(245, 158, 11, 0.6); }
+    }
+    .lunch-glow {
+      animation: pulseAmber 2.5s infinite;
+    }
+
+    /* Custom scrollbar */
+    ::-webkit-scrollbar {
+      width: 7px;
+      height: 7px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #f1f5f9;
+    }
+    .dark ::-webkit-scrollbar-track {
+      background: #1e293b;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #cbd5e1;
+      border-radius: 9999px;
+    }
+    .dark ::-webkit-scrollbar-thumb {
+      background: #475569;
+      border-radius: 9999px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #94a3b8;
+    }
+  </style>
+</head>
+<body class="bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 min-h-screen font-sans transition-colors duration-200">
+  <div id="root"></div>
+
+  <!-- React Application Logic -->
+  <script type="text/babel">
+    const { useState, useEffect, useMemo, useRef } = React;
+
+    // Default 7 Team Members with exact requested roles
+    const DEFAULT_EMPLOYEES = [
+      { id: 'EMP01', name: 'Muskan', role: 'Robotics Engineer', avatarBg: 'bg-pink-100 text-pink-700 dark:bg-pink-900/40 dark:text-pink-300' },
+      { id: 'EMP02', name: 'Rupa', role: 'Robotics Engineer', avatarBg: 'bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300' },
+      { id: 'EMP03', name: 'Abhinav', role: 'Robotics Engineer', avatarBg: 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300' },
+      { id: 'EMP04', name: 'Abhijeet', role: 'Robotics Engineer', avatarBg: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300' },
+      { id: 'EMP05', name: 'Rohit', role: 'Robotics Engineer', avatarBg: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300' },
+      { id: 'EMP06', name: 'Niyati', role: 'Creative Designer', avatarBg: 'bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300' },
+      { id: 'EMP07', name: 'Milan', role: 'Office Boy', avatarBg: 'bg-cyan-100 text-cyan-700 dark:bg-cyan-900/40 dark:text-cyan-300' },
+    ];
+
+    // Standard Shift & Lunch Timings
+    const SHIFT_CONFIG = {
+      startTime: '10:00', // 10:00 AM
+      endTime: '18:30',   // 06:30 PM
+      lunchStart: '14:00', // 02:00 PM
+      lunchEnd: '14:45',   // 02:45 PM
+      standardLunchMins: 45,
+      targetWorkMins: 465, // 7 hours 45 mins
+    };
+
+    // Default Office Geolocation Coordinates for Anti-Cheat Verification (Chirag can customize)
+    const DEFAULT_OFFICE_GEO = {
+      lat: 28.6139, // Default sample lat (customizable)
+      lon: 77.2090, // Default sample lon (customizable)
+      name: 'Head Office / Robotics Lab',
+      radiusMeters: 250 // Office radius allowance
+    };
+
+    // Haversine formula: Calculate real physical distance in meters between two coordinates (Pure Client-side JS)
+    function calculateDistanceInMeters(lat1, lon1, lat2, lon2) {
+      if (!lat1 || !lon1 || !lat2 || !lon2) return null;
+      const R = 6371e3; // Earth radius in meters
+      const phi1 = lat1 * Math.PI / 180;
+      const phi2 = lat2 * Math.PI / 180;
+      const deltaPhi = (lat2 - lat1) * Math.PI / 180;
+      const deltaLambda = (lon2 - lon1) * Math.PI / 180;
+
+      const a = Math.sin(deltaPhi / 2) * Math.sin(deltaPhi / 2) +
+                Math.cos(phi1) * Math.cos(phi2) *
+                Math.sin(deltaLambda / 2) * Math.sin(deltaLambda / 2);
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+      return Math.round(R * c); // Distance in meters
+    }
+
+    // Audio Feedback (Web Audio API - 0 external files)
+    const playChime = (type = 'success') => {
+      try {
+        const AudioContext = window.AudioContext || window.webkitAudioContext;
+        if (!AudioContext) return;
+        const ctx = new AudioContext();
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+
+        const now = ctx.currentTime;
+        if (type === 'success') {
+          osc.frequency.setValueAtTime(523.25, now);
+          osc.frequency.setValueAtTime(659.25, now + 0.1);
+          osc.frequency.setValueAtTime(783.99, now + 0.2);
+          gain.gain.setValueAtTime(0.15, now);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + 0.45);
+          osc.start(now);
+          osc.stop(now + 0.45);
+        } else if (type === 'lunch') {
+          osc.frequency.setValueAtTime(440, now);
+          osc.frequency.setValueAtTime(554.37, now + 0.15);
+          gain.gain.setValueAtTime(0.12, now);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + 0.35);
+          osc.start(now);
+          osc.stop(now + 0.35);
+        } else if (type === 'logout') {
+          osc.frequency.setValueAtTime(440, now);
+          osc.frequency.setValueAtTime(659.25, now + 0.12);
+          osc.frequency.setValueAtTime(880, now + 0.25);
+          gain.gain.setValueAtTime(0.2, now);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + 0.6);
+          osc.start(now);
+          osc.stop(now + 0.6);
+        }
+      } catch (e) {}
+    };
+
+    // Helper: Parse Time String (10:00 AM, 10:00:25 AM, 14:30)
+    const parseTimeStr = (str) => {
+      if (!str) return null;
+      const cleaned = String(str).replace(/\u202f|\xa0/g, ' ').trim();
+      const match = cleaned.match(/^(\d{1,2}):(\d{2})(?::\d{2})?\s*(AM|PM)?$/i);
+      if (!match) return null;
+      let hours = parseInt(match[1], 10);
+      const mins = parseInt(match[2], 10);
+      const meridiem = match[3];
+      if (meridiem) {
+        if (meridiem.toUpperCase() === 'PM' && hours < 12) hours += 12;
+        if (meridiem.toUpperCase() === 'AM' && hours === 12) hours = 0;
+      }
+      return hours * 60 + mins;
+    };
+
+    const formatMinutesToHuman = (mins) => {
+      if (mins === null || mins === undefined || isNaN(mins) || mins <= 0) return '0 min';
+      const h = Math.floor(mins / 60);
+      const m = mins % 60;
+      if (h === 0) return `${m} mins`;
+      if (m === 0) return `${h} hr${h > 1 ? 's' : ''}`;
+      return `${h}h ${m}m`;
+    };
+
+    const formatMinutesToDetailed = (mins) => {
+      if (mins === null || mins === undefined || isNaN(mins) || mins <= 0) return '0 Hours 00 Mins';
+      const h = Math.floor(mins / 60);
+      const m = mins % 60;
+      return `${h} Hour${h !== 1 ? 's' : ''} ${m < 10 ? '0' : ''}${m} Min${m !== 1 ? 's' : ''}`;
+    };
+
+    const getNowTimeStr = () => {
+      const now = new Date();
+      return now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+    };
+
+    const getTodayDateStr = () => {
+      const d = new Date();
+      const year = d.getFullYear();
+      const month = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    };
+
+    // Compute weekly date range (Monday to Sunday)
+    const getWeekDays = (selectedDateStr) => {
+      const curr = new Date(selectedDateStr + 'T00:00:00');
+      const dayOfWeek = curr.getDay();
+      const diffToMon = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
+      const monday = new Date(curr);
+      monday.setDate(curr.getDate() + diffToMon);
+
+      const days = [];
+      const dayNames = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+      for (let i = 0; i < 7; i++) {
+        const nextDate = new Date(monday);
+        nextDate.setDate(monday.getDate() + i);
+        const y = nextDate.getFullYear();
+        const m = String(nextDate.getMonth() + 1).padStart(2, '0');
+        const d = String(nextDate.getDate()).padStart(2, '0');
+        const dateStr = `${y}-${m}-${d}`;
+        days.push({
+          dateStr,
+          dayName: dayNames[i],
+          fullDayName: nextDate.toLocaleDateString('en-US', { weekday: 'long' }),
+          formatted: nextDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+          isCurrentSelected: dateStr === selectedDateStr,
+        });
+      }
+      return days;
+    };
+
+    // SVG Icons
+    const Icons = {
+      Clock: (props) => (
+        <svg className={props.className || "w-5 h-5"} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <circle cx="12" cy="12" r="10" strokeWidth="2" />
+          <polyline points="12 6 12 12 16 14" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      ),
+      LogIn: (props) => (
+        <svg className={props.className || "w-5 h-5"} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 16l-4-4m0 0l4-4m-4 4h14m-5 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h7a3 3 0 013 3v1" />
+        </svg>
+      ),
+      LogOut: (props) => (
+        <svg className={props.className || "w-5 h-5"} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+        </svg>
+      ),
+      Coffee: (props) => (
+        <svg className={props.className || "w-5 h-5"} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M18 8h1a4 4 0 010 8h-1M2 8h16v9a4 4 0 01-4 4H6a4 4 0 01-4-4V8z" />
+          <line x1="6" y1="1" x2="6" y2="4" strokeWidth="2" strokeLinecap="round" />
+          <line x1="10" y1="1" x2="10" y2="4" strokeWidth="2" strokeLinecap="round" />
+          <line x1="14" y1="1" x2="14" y2="4" strokeWidth="2" strokeLinecap="round" />
+        </svg>
+      ),
+      Utensils: (props) => (
+        <svg className={props.className || "w-5 h-5"} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 2v20M17 5v6a3 3 0 01-3 3v8M7 2v8a3 3 0 003 3v9M4 2v5M10 2v5" />
+        </svg>
+      ),
+      Calendar: (props) => (
+        <svg className={props.className || "w-5 h-5"} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <rect x="3" y="4" width="18" height="18" rx="2" strokeWidth="2" />
+          <line x1="16" y1="2" x2="16" y2="6" strokeWidth="2" strokeLinecap="round" />
+          <line x1="8" y1="2" x2="8" y2="6" strokeWidth="2" strokeLinecap="round" />
+          <line x1="3" y1="10" x2="21" y2="10" strokeWidth="2" />
+        </svg>
+      ),
+      FilePdf: (props) => (
+        <svg className={props.className || "w-5 h-5"} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+          <text x="7.2" y="16.5" fontSize="5.2" fontWeight="bold" fill="currentColor">PDF</text>
+        </svg>
+      ),
+      CheckCircle: (props) => (
+        <svg className={props.className || "w-5 h-5"} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+        </svg>
+      ),
+      Sparkles: (props) => (
+        <svg className={props.className || "w-5 h-5"} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.286L13 21l-2.286-6.857L5 12l5.714-2.286L13 3z" />
+        </svg>
+      ),
+      RefreshCw: (props) => (
+        <svg className={props.className || "w-5 h-5"} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+        </svg>
+      ),
+      Edit3: (props) => (
+        <svg className={props.className || "w-5 h-5"} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+        </svg>
+      ),
+      Sun: (props) => (
+        <svg className={props.className || "w-5 h-5"} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <circle cx="12" cy="12" r="5" strokeWidth="2" />
+          <line x1="12" y1="1" x2="12" y2="3" strokeWidth="2" strokeLinecap="round" />
+          <line x1="12" y1="21" x2="12" y2="23" strokeWidth="2" strokeLinecap="round" />
+          <line x1="4.22" y1="4.22" x2="5.64" y2="5.64" strokeWidth="2" strokeLinecap="round" />
+          <line x1="18.36" y1="18.36" x2="19.78" y2="19.78" strokeWidth="2" strokeLinecap="round" />
+          <line x1="1" y1="12" x2="3" y2="12" strokeWidth="2" strokeLinecap="round" />
+          <line x1="21" y1="12" x2="23" y2="12" strokeWidth="2" strokeLinecap="round" />
+          <line x1="4.22" y1="19.78" x2="5.64" y2="18.36" strokeWidth="2" strokeLinecap="round" />
+          <line x1="18.36" y1="5.64" x2="19.78" y2="4.22" strokeWidth="2" strokeLinecap="round" />
+        </svg>
+      ),
+      Moon: (props) => (
+        <svg className={props.className || "w-5 h-5"} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
+        </svg>
+      ),
+      Printer: (props) => (
+        <svg className={props.className || "w-5 h-5"} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4H7v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
+        </svg>
+      ),
+      Users: (props) => (
+        <svg className={props.className || "w-5 h-5"} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
+        </svg>
+      ),
+      Download: (props) => (
+        <svg className={props.className || "w-5 h-5"} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+        </svg>
+      ),
+      Lock: (props) => (
+        <svg className={props.className || "w-4 h-4"} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <rect x="3" y="11" width="18" height="11" rx="2" ry="2" strokeWidth="2" />
+          <path d="M7 11V7a5 5 0 0110 0v4" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      ),
+      Unlock: (props) => (
+        <svg className={props.className || "w-4 h-4"} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <rect x="3" y="11" width="18" height="11" rx="2" ry="2" strokeWidth="2" />
+          <path d="M7 11V7a5 5 0 019.9-1" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      ),
+      Key: (props) => (
+        <svg className={props.className || "w-4 h-4"} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
+        </svg>
+      ),
+      MapPin: (props) => (
+        <svg className={props.className || "w-4 h-4"} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+        </svg>
+      ),
+      ShieldCheck: (props) => (
+        <svg className={props.className || "w-4 h-4"} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+        </svg>
+      )
+    };
+
+    // Calculate detailed metrics for a single employee record
+    function calculateRecordMetrics(record, currentLiveTimeStr, officeGeo) {
+      if (!record || !record.inTime) {
+        return {
+          status: 'NOT_CHECKED_IN',
+          statusLabel: 'Not Checked In',
+          badgeClass: 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400',
+          lunchDurationMins: 0,
+          grossMins: 0,
+          netMins: 0,
+          shiftCompliance: 'Pending',
+          complianceClass: 'text-slate-400',
+          workLocation: 'Office',
+          locationDisplay: '—',
+          geoVerified: false
+        };
+      }
+
+      const inMins = parseTimeStr(record.inTime);
+      const lunchOutMins = parseTimeStr(record.lunchOut);
+      const lunchInMins = parseTimeStr(record.lunchIn);
+      const outMins = parseTimeStr(record.outTime);
+      const liveMins = parseTimeStr(currentLiveTimeStr);
+
+      // Lunch duration calculation
+      let lunchDurationMins = 0;
+      if (lunchOutMins && lunchInMins) {
+        lunchDurationMins = Math.max(0, lunchInMins - lunchOutMins);
+      } else if (lunchOutMins && !lunchInMins && liveMins) {
+        lunchDurationMins = Math.max(0, liveMins - lunchOutMins);
+      }
+
+      // Check current employee status
+      let status = 'WORKING';
+      let statusLabel = 'Working (Active)';
+      let badgeClass = 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/70 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-700 active-glow';
+
+      if (record.outTime) {
+        status = 'COMPLETED';
+        statusLabel = 'Logged Out (Shift Done)';
+        badgeClass = 'bg-blue-100 text-blue-800 dark:bg-blue-950/70 dark:text-blue-300 border border-blue-300 dark:border-blue-700';
+      } else if (record.lunchOut && !record.lunchIn) {
+        status = 'ON_LUNCH';
+        statusLabel = 'On Lunch Break';
+        badgeClass = 'bg-amber-100 text-amber-800 dark:bg-amber-950/70 dark:text-amber-300 border border-amber-300 dark:border-amber-700 lunch-glow';
+      }
+
+      // Calculate gross and net
+      let grossMins = 0;
+      let netMins = 0;
+
+      if (outMins) {
+        grossMins = Math.max(0, outMins - inMins);
+      } else if (liveMins) {
+        grossMins = Math.max(0, liveMins - inMins);
+      }
+
+      const confirmedLunchMins = (lunchOutMins && lunchInMins) ? (lunchInMins - lunchOutMins) : (lunchOutMins ? lunchDurationMins : 0);
+      netMins = Math.max(0, grossMins - confirmedLunchMins);
+
+      // Shift Compliance Check against 10:00 - 18:30 (Target: 465 mins / 7h 45m)
+      let shiftCompliance = 'In Progress';
+      let complianceClass = 'text-blue-600 dark:text-blue-400';
+
+      if (outMins) {
+        const diffFromTarget = netMins - SHIFT_CONFIG.targetWorkMins;
+        if (diffFromTarget >= 0) {
+          shiftCompliance = diffFromTarget > 0 ? `Standard Met (+${diffFromTarget}m OT)` : `Standard Met (Exact 7h 45m)`;
+          complianceClass = 'text-emerald-600 dark:text-emerald-400 font-semibold';
+        } else {
+          shiftCompliance = `Short by ${Math.abs(diffFromTarget)}m`;
+          complianceClass = 'text-rose-600 dark:text-rose-400 font-semibold';
+        }
+      } else {
+        if (inMins > 615) {
+          shiftCompliance = `Late Arrival (${record.inTime})`;
+          complianceClass = 'text-amber-600 dark:text-amber-400';
+        } else {
+          shiftCompliance = 'On Schedule';
+        }
+      }
+
+      // Location & Anti-Cheat verification logic
+      const workLocation = record.workLocation || 'Office';
+      const locationNote = record.locationNote || '';
+      const areaName = record.areaName || '';
+      const distance = record.distanceMeters;
+
+      let locationDisplay = workLocation === 'Field' ? '🚗 Field' : '🏢 Office';
+      let geoVerified = Boolean(record.isVerifiedOffice);
+
+      return {
+        status,
+        statusLabel,
+        badgeClass,
+        lunchDurationMins,
+        confirmedLunchMins,
+        grossMins,
+        netMins,
+        shiftCompliance,
+        complianceClass,
+        workLocation,
+        locationNote,
+        areaName,
+        distance,
+        locationDisplay,
+        geoVerified,
+        mapUrl: record.mapUrl || (record.latitude ? `https://maps.google.com/?q=${record.latitude},${record.longitude}` : null)
+      };
+    }
+
+    // Main App Component
+    function App() {
+      const [currentDateStr, setCurrentDateStr] = useState(getTodayDateStr());
+      const [liveTime, setLiveTime] = useState(getNowTimeStr());
+      const [darkMode, setDarkMode] = useState(() => localStorage.getItem('agy_dark_mode') === 'true');
+      const [activeTab, setActiveTab] = useState('dashboard'); // 'dashboard', 'weekly', 'history'
+
+      // Owner (Chirag) Credentials State
+      const DEFAULT_OWNER_AUTH = {
+        id: 'chirag',
+        password: '123',
+        name: 'Chirag',
+        role: 'Owner & Director'
+      };
+
+      const [ownerAuth, setOwnerAuth] = useState(() => {
+        try {
+          const saved = localStorage.getItem('agy_owner_auth');
+          return saved ? JSON.parse(saved) : DEFAULT_OWNER_AUTH;
+        } catch (e) {
+          return DEFAULT_OWNER_AUTH;
+        }
+      });
+
+      const [isOwnerLoggedIn, setIsOwnerLoggedIn] = useState(false);
+      const [showOwnerSpaceModal, setShowOwnerSpaceModal] = useState(false);
+      const [ownerSpaceTab, setOwnerSpaceTab] = useState('login'); // 'login' or 'create'
+      const [pendingActionAfterLogin, setPendingActionAfterLogin] = useState(null); // 'csv' or null
+
+      // Office Geofence Coordinates (can be set by Chirag)
+      const [officeGeo, setOfficeGeo] = useState(() => {
+        try {
+          const saved = localStorage.getItem('agy_office_geo');
+          return saved ? JSON.parse(saved) : DEFAULT_OFFICE_GEO;
+        } catch (e) {
+          return DEFAULT_OFFICE_GEO;
+        }
+      });
+
+      // Employees List with Roles (Milan = Office Boy, Niyati = Creative Designer, others = Robotics Engineer)
+      const [employees, setEmployees] = useState(() => {
+        try {
+          const savedEmps = localStorage.getItem('agy_office_employees');
+          if (savedEmps) {
+            const parsed = JSON.parse(savedEmps);
+            return parsed.map(e => {
+              if (e.name && e.name.toLowerCase() === 'milan') return { ...e, role: 'Office Boy' };
+              if (e.name && e.name.toLowerCase() === 'niyati') return { ...e, role: 'Creative Designer' };
+              return e;
+            });
+          }
+          return DEFAULT_EMPLOYEES;
+        } catch (e) {
+          return DEFAULT_EMPLOYEES;
+        }
+      });
+
+      // Master Attendance Data
+      const [attendanceData, setAttendanceData] = useState(() => {
+        try {
+          const saved = localStorage.getItem('agy_office_attendance');
+          return saved ? JSON.parse(saved) : {};
+        } catch (e) {
+          return {};
+        }
+      });
+
+      // Modals
+      const [selectedEmployeeForModal, setSelectedEmployeeForModal] = useState(null); // For manual edit
+      const [justLoggedOutSummary, setJustLoggedOutSummary] = useState(null); // For logout popup duration
+      const [showAllLoggedOutModal, setShowAllLoggedOutModal] = useState(false);
+      const [hasTriggeredCelebrationForToday, setHasTriggeredCelebrationForToday] = useState(false);
+      const [showManageStaffModal, setShowManageStaffModal] = useState(false);
+      
+      // Location Check-In Modal
+      const [checkInModalEmployee, setCheckInModalEmployee] = useState(null);
+
+      // Sync to localStorage
+      useEffect(() => {
+        try {
+          localStorage.setItem('agy_office_attendance', JSON.stringify(attendanceData));
+        } catch (e) {}
+      }, [attendanceData]);
+
+      useEffect(() => {
+        try {
+          localStorage.setItem('agy_office_employees', JSON.stringify(employees));
+        } catch (e) {}
+      }, [employees]);
+
+      useEffect(() => {
+        try {
+          localStorage.setItem('agy_owner_auth', JSON.stringify(ownerAuth));
+        } catch (e) {}
+      }, [ownerAuth]);
+
+      useEffect(() => {
+        try {
+          localStorage.setItem('agy_office_geo', JSON.stringify(officeGeo));
+        } catch (e) {}
+      }, [officeGeo]);
+
+      // Dark mode toggle
+      useEffect(() => {
+        if (darkMode) {
+          document.documentElement.classList.add('dark');
+          localStorage.setItem('agy_dark_mode', 'true');
+        } else {
+          document.documentElement.classList.remove('dark');
+          localStorage.setItem('agy_dark_mode', 'false');
+        }
+      }, [darkMode]);
+
+      // Live 1-second clock
+      useEffect(() => {
+        const interval = setInterval(() => {
+          setLiveTime(getNowTimeStr());
+        }, 1000);
+        return () => clearInterval(interval);
+      }, []);
+
+      const todayRecords = attendanceData[currentDateStr] || {};
+
+      // Check if all employees have logged out
+      const totalEmployeesCount = employees.length;
+      const loggedOutCount = employees.filter(emp => {
+        const rec = todayRecords[emp.id];
+        return rec && rec.outTime;
+      }).length;
+
+      const allLoggedOut = totalEmployeesCount > 0 && loggedOutCount === totalEmployeesCount;
+
+      useEffect(() => {
+        if (allLoggedOut && !hasTriggeredCelebrationForToday) {
+          setHasTriggeredCelebrationForToday(true);
+          setShowAllLoggedOutModal(true);
+          playChime('logout');
+          if (window.confetti) {
+            window.confetti({ particleCount: 130, spread: 80, origin: { y: 0.6 } });
+          }
+        }
+      }, [allLoggedOut, hasTriggeredCelebrationForToday]);
+
+      // Confirm Check-In with Location & GPS
+      const handleConfirmCheckIn = (empId, locationData) => {
+        const timeNow = getNowTimeStr();
+        playChime('success');
+        setAttendanceData(prev => {
+          const currentDay = prev[currentDateStr] || {};
+          return {
+            ...prev,
+            [currentDateStr]: {
+              ...currentDay,
+              [empId]: {
+                ...(currentDay[empId] || {}),
+                inTime: timeNow,
+                workLocation: locationData.workLocation,
+                locationNote: locationData.locationNote || '',
+                latitude: locationData.latitude || null,
+                longitude: locationData.longitude || null,
+                accuracy: locationData.accuracy || null,
+                areaName: locationData.areaName || '',
+                distanceMeters: locationData.distanceMeters || null,
+                isVerifiedOffice: locationData.isVerifiedOffice || false,
+                mapUrl: locationData.mapUrl || null
+              }
+            }
+          };
+        });
+        setCheckInModalEmployee(null);
+      };
+
+      const handleLunchOut = (empId) => {
+        const timeNow = getNowTimeStr();
+        playChime('lunch');
+        setAttendanceData(prev => {
+          const currentDay = prev[currentDateStr] || {};
+          return {
+            ...prev,
+            [currentDateStr]: {
+              ...currentDay,
+              [empId]: {
+                ...(currentDay[empId] || {}),
+                lunchOut: timeNow,
+              }
+            }
+          };
+        });
+      };
+
+      const handleLunchIn = (empId) => {
+        const timeNow = getNowTimeStr();
+        playChime('success');
+        setAttendanceData(prev => {
+          const currentDay = prev[currentDateStr] || {};
+          return {
+            ...prev,
+            [currentDateStr]: {
+              ...currentDay,
+              [empId]: {
+                ...(currentDay[empId] || {}),
+                lunchIn: timeNow,
+              }
+            }
+          };
+        });
+      };
+
+      const handlePunchOut = (empId) => {
+        const timeNow = getNowTimeStr();
+        playChime('logout');
+        const emp = employees.find(e => e.id === empId);
+        const currentRecord = (attendanceData[currentDateStr] || {})[empId] || {};
+
+        const updatedRecord = {
+          ...currentRecord,
+          outTime: timeNow
+        };
+
+        const metrics = calculateRecordMetrics(updatedRecord, timeNow, officeGeo);
+
+        setAttendanceData(prev => {
+          const currentDay = prev[currentDateStr] || {};
+          return {
+            ...prev,
+            [currentDateStr]: {
+              ...currentDay,
+              [empId]: updatedRecord
+            }
+          };
+        });
+
+        // Trigger individual Logout Summary Modal showing total duration & location!
+        setJustLoggedOutSummary({
+          employee: emp,
+          inTime: updatedRecord.inTime,
+          workLocation: updatedRecord.workLocation || 'Office',
+          locationNote: updatedRecord.locationNote || '',
+          areaName: updatedRecord.areaName || '',
+          lunchOut: updatedRecord.lunchOut || 'Not taken',
+          lunchIn: updatedRecord.lunchIn || 'Not taken',
+          lunchDurationMins: metrics.lunchDurationMins,
+          outTime: timeNow,
+          grossMins: metrics.grossMins,
+          netMins: metrics.netMins,
+          shiftCompliance: metrics.shiftCompliance,
+          mapUrl: updatedRecord.mapUrl
+        });
+      };
+
+      // Fill realistic Sample / Demo Data for testing
+      const handleFillSampleData = () => {
+        const sampleTimings = [
+          { inTime: '10:00 AM', workLocation: 'Office', areaName: 'Sector 62, Robotics Lab', distanceMeters: 30, isVerifiedOffice: true, lunchOut: '02:00 PM', lunchIn: '02:45 PM', outTime: '06:30 PM' }, // Muskan
+          { inTime: '09:55 AM', workLocation: 'Office', areaName: 'Sector 62, Robotics Lab', distanceMeters: 45, isVerifiedOffice: true, lunchOut: '02:05 PM', lunchIn: '02:40 PM', outTime: '06:35 PM' }, // Rupa
+          { inTime: '10:02 AM', workLocation: 'Field', areaName: 'Okhla Industrial Area (Client Site)', locationNote: 'Robot Arm Installation', distanceMeters: 14200, isVerifiedOffice: false, lunchOut: '02:00 PM', lunchIn: '02:45 PM', outTime: '06:32 PM' }, // Abhinav
+          { inTime: '10:10 AM', workLocation: 'Field', areaName: 'Manesar Tech Hub', locationNote: 'Field Sensor Testing', distanceMeters: 32000, isVerifiedOffice: false, lunchOut: '02:10 PM', lunchIn: '02:50 PM', outTime: '06:40 PM' }, // Abhijeet
+          { inTime: '09:58 AM', workLocation: 'Office', areaName: 'Sector 62, Robotics Lab', distanceMeters: 60, isVerifiedOffice: true, lunchOut: '02:02 PM', lunchIn: '02:44 PM', outTime: '06:30 PM' }, // Rohit
+          { inTime: '10:05 AM', workLocation: 'Office', areaName: 'Sector 62, Robotics Lab', distanceMeters: 25, isVerifiedOffice: true, lunchOut: '02:00 PM', lunchIn: '02:45 PM', outTime: '06:35 PM' }, // Niyati (Designer)
+          { inTime: '10:00 AM', workLocation: 'Office', areaName: 'Sector 62, Robotics Lab', distanceMeters: 15, isVerifiedOffice: true, lunchOut: '02:03 PM', lunchIn: '02:46 PM', outTime: '06:31 PM' }, // Milan (Office Boy)
+        ];
+
+        const newDayData = {};
+        employees.forEach((emp, index) => {
+          newDayData[emp.id] = sampleTimings[index % sampleTimings.length];
+        });
+
+        setAttendanceData(prev => ({
+          ...prev,
+          [currentDateStr]: newDayData
+        }));
+
+        setHasTriggeredCelebrationForToday(false);
+      };
+
+      const handleResetToday = () => {
+        if (window.confirm("Are you sure you want to reset all punches for today?")) {
+          setAttendanceData(prev => {
+            const copy = { ...prev };
+            delete copy[currentDateStr];
+            return copy;
+          });
+          setHasTriggeredCelebrationForToday(false);
+        }
+      };
+
+      // Perform Protected CSV Download (Executed only for Chirag)
+      const performCSVDownload = () => {
+        let csv = 'S.No,Employee Name,Role,Work Location,GPS Area,Distance from Office (m),Google Maps Link,Office In,Lunch Out,Lunch In,Lunch Duration (mins),Office Out,Gross Span,Net Work Time,Shift Status\n';
+        employees.forEach((emp, index) => {
+          const rec = todayRecords[emp.id] || {};
+          const m = calculateRecordMetrics(rec, liveTime, officeGeo);
+          const loc = rec.workLocation ? `${rec.workLocation}${rec.locationNote ? ` - ${rec.locationNote}` : ''}` : 'Office';
+          const area = rec.areaName ? rec.areaName.replace(/"/g, '""') : 'Not Detected';
+          const dist = rec.distanceMeters !== undefined && rec.distanceMeters !== null ? `${rec.distanceMeters}m` : 'N/A';
+          const map = rec.mapUrl || '';
+          csv += `"${index + 1}","${emp.name}","${emp.role}","${loc}","${area}","${dist}","${map}","${rec.inTime || ''}","${rec.lunchOut || ''}","${rec.lunchIn || ''}","${m.lunchDurationMins}","${rec.outTime || ''}","${formatMinutesToHuman(m.grossMins)}","${formatMinutesToHuman(m.netMins)}","${m.shiftCompliance}"\n`;
+        });
+
+        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `Office_Attendance_${currentDateStr}_Chirag_Owner.csv`;
+        a.click();
+        URL.revokeObjectURL(url);
+      };
+
+      // Guarded CSV Click Handler: Requires Chirag to be logged in!
+      const handleCSVClick = () => {
+        if (!isOwnerLoggedIn) {
+          setPendingActionAfterLogin('csv');
+          setOwnerSpaceTab('login');
+          setShowOwnerSpaceModal(true);
+          return;
+        }
+        performCSVDownload();
+      };
+
+      // Generate PDF Report using jsPDF & AutoTable
+      const generatePDFReport = () => {
+        try {
+          const { jsPDF } = window.jspdf;
+          const doc = new jsPDF('p', 'mm', 'a4');
+          const pageWidth = doc.internal.pageSize.getWidth();
+
+          // Header Background
+          doc.setFillColor(79, 70, 229);
+          doc.rect(0, 0, pageWidth, 38, 'F');
+
+          // Title
+          doc.setTextColor(255, 255, 255);
+          doc.setFontSize(17);
+          doc.setFont('helvetica', 'bold');
+          doc.text("DAILY OFFICE ATTENDANCE & SUMMARY REPORT", 14, 16);
+
+          // Subtitle
+          doc.setFontSize(9);
+          doc.setFont('helvetica', 'normal');
+          const dateObj = new Date(currentDateStr + 'T00:00:00');
+          const formattedDate = dateObj.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+          doc.text(`Official Shift: 10:00 AM - 6:30 PM  |  Lunch: 2:00 PM - 2:45 PM (45m)  |  Owner: Chirag`, 14, 24);
+          doc.text(`Date: ${formattedDate}  |  Generated At: ${liveTime}`, 14, 30);
+
+          // Summary Metrics Banner
+          doc.setFillColor(248, 250, 252);
+          doc.setDrawColor(226, 232, 240);
+          doc.roundedRect(14, 43, pageWidth - 28, 22, 3, 3, 'FD');
+
+          doc.setTextColor(15, 23, 42);
+          doc.setFontSize(9.5);
+          doc.setFont('helvetica', 'bold');
+          
+          let totalNetMinutesToday = 0;
+          let presentCount = 0;
+
+          employees.forEach(emp => {
+            const rec = todayRecords[emp.id];
+            if (rec && rec.inTime) {
+              presentCount++;
+              const metrics = calculateRecordMetrics(rec, liveTime, officeGeo);
+              totalNetMinutesToday += metrics.netMins;
+            }
+          });
+
+          const avgMins = presentCount > 0 ? Math.round(totalNetMinutesToday / presentCount) : 0;
+
+          doc.text(`Total Staff: ${employees.length}`, 20, 52);
+          doc.text(`Present: ${presentCount} / ${employees.length}`, 65, 52);
+          doc.text(`Shift Completed: ${loggedOutCount} / ${employees.length}`, 112, 52);
+          doc.text(`Avg Net Work: ${formatMinutesToHuman(avgMins)}`, 160, 52);
+
+          doc.setFont('helvetica', 'normal');
+          doc.setFontSize(8);
+          doc.setTextColor(100, 116, 139);
+          doc.text(`Target Net Work: 7h 45m  |  Total Team Hours Logged: ${formatMinutesToHuman(totalNetMinutesToday)}`, 20, 59);
+
+          // Table Rows
+          const tableRows = employees.map((emp, index) => {
+            const rec = todayRecords[emp.id] || {};
+            const metrics = calculateRecordMetrics(rec, liveTime, officeGeo);
+            const locText = rec.workLocation === 'Field' ? 'Field' : 'Office';
+
+            return [
+              index + 1,
+              emp.name,
+              emp.role,
+              locText,
+              rec.inTime || '—',
+              rec.lunchOut || '—',
+              rec.lunchIn || '—',
+              metrics.lunchDurationMins > 0 ? `${metrics.lunchDurationMins}m` : '—',
+              rec.outTime || '—',
+              metrics.grossMins > 0 ? formatMinutesToHuman(metrics.grossMins) : '—',
+              metrics.netMins > 0 ? formatMinutesToHuman(metrics.netMins) : '—',
+              metrics.status === 'COMPLETED' ? metrics.shiftCompliance : (rec.inTime ? 'In Progress' : 'Absent')
+            ];
+          });
+
+          // Generate Table
+          doc.autoTable({
+            startY: 70,
+            head: [[
+              '#',
+              'Employee',
+              'Role',
+              'Mode',
+              'Office In',
+              'Lunch Out',
+              'Lunch In',
+              'Lunch Time',
+              'Office Out',
+              'Gross Span',
+              'Net Work',
+              'Shift Status'
+            ]],
+            body: tableRows,
+            theme: 'striped',
+            headStyles: {
+              fillColor: [79, 70, 229],
+              textColor: [255, 255, 255],
+              fontStyle: 'bold',
+              fontSize: 8,
+              halign: 'center'
+            },
+            bodyStyles: {
+              fontSize: 7.8,
+              halign: 'center'
+            },
+            columnStyles: {
+              0: { cellWidth: 7, halign: 'center' },
+              1: { cellWidth: 20, halign: 'left', fontStyle: 'bold' },
+              2: { cellWidth: 24, halign: 'left' },
+              3: { cellWidth: 14 },
+              4: { cellWidth: 17 },
+              5: { cellWidth: 16 },
+              6: { cellWidth: 16 },
+              7: { cellWidth: 15 },
+              8: { cellWidth: 17 },
+              9: { cellWidth: 16 },
+              10: { cellWidth: 17, fontStyle: 'bold' },
+              11: { cellWidth: 23 }
+            },
+            alternateRowStyles: {
+              fillColor: [248, 250, 252]
+            },
+            margin: { left: 10, right: 10 }
+          });
+
+          // Signature Block
+          const finalY = (doc.lastAutoTable && doc.lastAutoTable.finalY) ? doc.lastAutoTable.finalY + 20 : 180;
+          doc.setDrawColor(203, 213, 225);
+          doc.line(16, finalY, 66, finalY);
+          doc.line(pageWidth - 76, finalY, pageWidth - 16, finalY);
+
+          doc.setFontSize(8.5);
+          doc.setTextColor(100, 116, 139);
+          doc.text("HR / Operations Signature", 18, finalY + 5);
+          doc.text("Approved & Verified: Chirag (Owner)", pageWidth - 74, finalY + 5);
+
+          // Save PDF file
+          doc.save(`Office_Attendance_Report_${currentDateStr}.pdf`);
+        } catch (err) {
+          console.error("PDF generation error, fallback to print view:", err);
+          window.print();
+        }
+      };
+
+      const weekDays = useMemo(() => getWeekDays(currentDateStr), [currentDateStr]);
+
+      return (
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+          
+          {/* TOP NAV & BRAND BAR */}
+          <header className="flex flex-col md:flex-row items-center justify-between gap-4 pb-6 border-b border-slate-200 dark:border-slate-800">
+            <div className="flex items-center gap-3.5">
+              <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-indigo-600 via-indigo-500 to-violet-500 flex items-center justify-center text-white shadow-lg shadow-indigo-500/25">
+                <Icons.Clock className="w-7 h-7" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h1 className="text-2xl font-extrabold tracking-tight bg-gradient-to-r from-slate-900 to-indigo-900 dark:from-white dark:to-indigo-200 bg-clip-text text-transparent">
+                    OfficeTime Pro
+                  </h1>
+                  <span className="px-2.5 py-0.5 text-xs font-semibold rounded-full bg-indigo-100 text-indigo-700 dark:bg-indigo-900/50 dark:text-indigo-300">
+                    Robotics Team ({employees.length} Staff)
+                  </span>
+                </div>
+                <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">
+                  Official Shift: 10:00 AM – 6:30 PM &bull; Lunch: 2:00 PM – 2:45 PM &bull; <strong className="text-amber-600 dark:text-amber-400">Owner: Chirag</strong>
+                </p>
+              </div>
+            </div>
+
+            {/* Live Clock, Owner Space & Action Controls */}
+            <div className="flex flex-wrap items-center gap-2.5">
+              <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl px-3.5 py-1.5 text-right shadow-sm">
+                <div className="text-[10px] uppercase tracking-wider font-semibold text-slate-500 dark:text-slate-400 flex items-center justify-end gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping"></span>
+                  Live Time
+                </div>
+                <div className="text-lg font-mono font-bold text-indigo-600 dark:text-indigo-400">
+                  {liveTime}
+                </div>
+              </div>
+
+              {/* OWNER SPACE (Chirag) LOGIN / STATUS BUTTON */}
+              {isOwnerLoggedIn ? (
+                <div className="flex items-center gap-2 bg-gradient-to-r from-amber-50 to-orange-50 dark:from-amber-950/40 dark:to-orange-950/30 border border-amber-300 dark:border-amber-700/60 rounded-xl px-3 py-1.5 shadow-sm">
+                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                  <div className="text-left">
+                    <span className="text-[10px] uppercase font-bold text-amber-700 dark:text-amber-400 block leading-tight">Owner Active</span>
+                    <span className="text-xs font-extrabold text-slate-900 dark:text-white">👑 Chirag</span>
+                  </div>
+                  <div className="flex items-center gap-1 ml-1 border-l border-amber-200 dark:border-amber-800 pl-1.5">
+                    <button
+                      onClick={() => { setOwnerSpaceTab('create'); setShowOwnerSpaceModal(true); }}
+                      className="p-1 text-amber-700 dark:text-amber-300 hover:text-amber-900 rounded hover:bg-amber-100 dark:hover:bg-amber-900/50"
+                      title="Manage ID / Password"
+                    >
+                      <Icons.Key className="w-3.5 h-3.5" />
+                    </button>
+                    <button
+                      onClick={() => { setIsOwnerLoggedIn(false); playChime('logout'); }}
+                      className="px-2 py-0.5 rounded-lg bg-amber-200 dark:bg-amber-800 hover:bg-amber-300 text-[11px] font-bold text-amber-900 dark:text-amber-100"
+                      title="Lock Owner Session"
+                    >
+                      Lock
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <button
+                  onClick={() => { setOwnerSpaceTab('login'); setShowOwnerSpaceModal(true); }}
+                  className="flex items-center gap-2 px-3 py-2 rounded-xl border border-amber-200 dark:border-amber-800/60 bg-amber-50/80 hover:bg-amber-100 dark:bg-amber-950/40 dark:hover:bg-amber-900/40 text-amber-900 dark:text-amber-200 text-xs font-bold shadow-sm transition-all"
+                  title="Chirag (Owner) Login / Setup"
+                >
+                  <span className="text-sm">👑</span>
+                  <span>Owner Space (Chirag)</span>
+                  <Icons.Lock className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
+                </button>
+              )}
+
+              {/* Manage Staff Button */}
+              <button
+                onClick={() => setShowManageStaffModal(true)}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 text-xs font-semibold shadow-sm transition-colors"
+                title="Manage Employee Names"
+              >
+                <Icons.Users className="w-4 h-4 text-indigo-500" />
+                <span>Staff</span>
+              </button>
+
+              {/* Dark mode button */}
+              <button
+                onClick={() => setDarkMode(!darkMode)}
+                className="p-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 transition-colors shadow-sm"
+                title="Toggle Dark/Light Mode"
+              >
+                {darkMode ? <Icons.Sun className="w-4 h-4" /> : <Icons.Moon className="w-4 h-4" />}
+              </button>
+            </div>
+          </header>
+
+          {/* SECONDARY CONTROLS & TABS */}
+          <div className="mt-6 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+            {/* Tabs */}
+            <div className="flex items-center gap-1.5 bg-slate-200/80 dark:bg-slate-900 p-1 rounded-xl">
+              <button
+                onClick={() => setActiveTab('dashboard')}
+                className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all ${
+                  activeTab === 'dashboard'
+                    ? 'bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 shadow-sm'
+                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                }`}
+              >
+                Today's Punch Cards
+              </button>
+              <button
+                onClick={() => setActiveTab('weekly')}
+                className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all ${
+                  activeTab === 'weekly'
+                    ? 'bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 shadow-sm'
+                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                }`}
+              >
+                Weekly Timesheet
+              </button>
+              <button
+                onClick={() => setActiveTab('history')}
+                className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all ${
+                  activeTab === 'history'
+                    ? 'bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 shadow-sm'
+                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                }`}
+              >
+                Daily Table Log
+              </button>
+            </div>
+
+            {/* Date Selector & Action Buttons */}
+            <div className="flex flex-wrap items-center gap-2.5">
+              <div className="flex items-center gap-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-1.5 shadow-sm">
+                <Icons.Calendar className="w-4 h-4 text-slate-500" />
+                <input
+                  type="date"
+                  value={currentDateStr}
+                  onChange={(e) => setCurrentDateStr(e.target.value)}
+                  className="bg-transparent text-sm font-medium focus:outline-none text-slate-800 dark:text-slate-200"
+                />
+              </div>
+
+              <button
+                onClick={handleFillSampleData}
+                className="flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold rounded-xl bg-violet-50 text-violet-700 hover:bg-violet-100 dark:bg-violet-950/60 dark:text-violet-300 dark:hover:bg-violet-900/60 border border-violet-200 dark:border-violet-800 transition-colors shadow-sm"
+                title="Fill all employees with realistic completed timings for quick testing"
+              >
+                <Icons.Sparkles className="w-4 h-4" />
+                Demo Fill Today
+              </button>
+
+              {/* PROTECTED CSV BUTTON (Only Chirag can download after login) */}
+              <button
+                onClick={handleCSVClick}
+                className={`flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-xl border shadow-sm transition-all ${
+                  isOwnerLoggedIn
+                    ? 'border-emerald-200 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100'
+                    : 'border-amber-200 dark:border-amber-800 bg-amber-50/70 dark:bg-amber-950/30 text-amber-800 dark:text-amber-300 hover:bg-amber-100'
+                }`}
+                title={isOwnerLoggedIn ? "Download Attendance CSV Report (Authorized)" : "🔒 Chirag (Owner) Login Required to Download CSV"}
+              >
+                {isOwnerLoggedIn ? (
+                  <Icons.Download className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                ) : (
+                  <Icons.Lock className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
+                )}
+                <span>CSV {isOwnerLoggedIn ? '(Unlocked)' : '(Owner Only)'}</span>
+              </button>
+
+              <button
+                onClick={generatePDFReport}
+                className="flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white shadow-md shadow-indigo-500/25 transition-all"
+              >
+                <Icons.FilePdf className="w-4 h-4" />
+                Generate Overall PDF
+              </button>
+
+              <button
+                onClick={handleResetToday}
+                className="p-2 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 rounded-xl hover:bg-rose-50 dark:hover:bg-rose-950/50 transition-colors"
+                title="Reset punches for current date"
+              >
+                <Icons.RefreshCw className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+
+          {/* ALL LOGGED OUT CELEBRATION BANNER */}
+          {allLoggedOut && (
+            <div className="mt-6 bg-gradient-to-r from-emerald-500 via-teal-500 to-indigo-600 text-white p-5 rounded-2xl shadow-xl flex flex-col sm:flex-row items-center justify-between gap-4">
+              <div className="flex items-center gap-3.5">
+                <div className="w-12 h-12 rounded-xl bg-white/20 backdrop-blur-md flex items-center justify-center shrink-0">
+                  <Icons.CheckCircle className="w-7 h-7 text-white" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold">All {employees.length} Staff Members Have Completed Their Shift!</h3>
+                  <p className="text-xs text-white/90">
+                    Everyone has logged out for {new Date(currentDateStr + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}. The overall summary report is ready for Chirag.
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={generatePDFReport}
+                className="px-5 py-2.5 rounded-xl bg-white text-indigo-700 hover:bg-indigo-50 font-bold text-sm shadow-md transition-all shrink-0 flex items-center gap-2"
+              >
+                <Icons.FilePdf className="w-5 h-5 text-indigo-600" />
+                Download Final PDF Summary
+              </button>
+            </div>
+          )}
+
+          {/* METRIC STATS STRIP */}
+          <div className="mt-6 grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 shadow-sm">
+              <div className="text-xs font-semibold text-slate-500 uppercase">Robotics Team Staff</div>
+              <div className="mt-2 flex items-baseline justify-between">
+                <span className="text-2xl font-extrabold text-slate-900 dark:text-white">{employees.length} Members</span>
+                <span className="text-xs text-amber-600 dark:text-amber-400 font-bold">Owner: Chirag</span>
+              </div>
+            </div>
+
+            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 shadow-sm">
+              <div className="text-xs font-semibold text-slate-500 uppercase">Active Working</div>
+              <div className="mt-2 flex items-baseline justify-between">
+                <span className="text-2xl font-extrabold text-emerald-600 dark:text-emerald-400">
+                  {employees.filter(e => {
+                    const r = todayRecords[e.id];
+                    return r && r.inTime && !r.outTime && (!r.lunchOut || r.lunchIn);
+                  }).length}
+                </span>
+                <span className="text-xs text-slate-400">
+                  {employees.filter(e => todayRecords[e.id]?.workLocation === 'Field').length > 0 ? (
+                    <span className="text-amber-600 font-medium">({employees.filter(e => todayRecords[e.id]?.workLocation === 'Field').length} on Field)</span>
+                  ) : 'At Work'}
+                </span>
+              </div>
+            </div>
+
+            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 shadow-sm">
+              <div className="text-xs font-semibold text-slate-500 uppercase">On Lunch (2 - 2:45 PM)</div>
+              <div className="mt-2 flex items-baseline justify-between">
+                <span className="text-2xl font-extrabold text-amber-500">
+                  {employees.filter(e => {
+                    const r = todayRecords[e.id];
+                    return r && r.lunchOut && !r.lunchIn && !r.outTime;
+                  }).length}
+                </span>
+                <span className="text-xs text-amber-600 dark:text-amber-400 font-medium">Break Time</span>
+              </div>
+            </div>
+
+            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 shadow-sm">
+              <div className="text-xs font-semibold text-slate-500 uppercase">Shift Finished</div>
+              <div className="mt-2 flex items-baseline justify-between">
+                <span className="text-2xl font-extrabold text-blue-600 dark:text-blue-400">
+                  {loggedOutCount} / {employees.length}
+                </span>
+                <span className="text-xs text-slate-400">
+                  {Math.round((loggedOutCount / (employees.length || 1)) * 100)}% Finished
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* TAB 1: MAIN PUNCH CARDS FOR EMPLOYEES */}
+          {activeTab === 'dashboard' && (
+            <div className="mt-8">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                  <span>Employee Timecards & Actions</span>
+                  <span className="text-xs font-normal text-slate-500 dark:text-slate-400">
+                    (Shift: 10:00 - 18:30 &bull; Lunch: 14:00 - 14:45)
+                  </span>
+                </h2>
+                <span className="text-xs text-slate-400 hidden sm:inline">
+                  📍 Click "Office In" to choose Office or Field (with GPS Area Detection)
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
+                {employees.map((emp) => {
+                  const record = todayRecords[emp.id] || {};
+                  const metrics = calculateRecordMetrics(record, liveTime, officeGeo);
+
+                  const hasCheckedIn = Boolean(record.inTime);
+                  const hasLunchOut = Boolean(record.lunchOut);
+                  const hasLunchIn = Boolean(record.lunchIn);
+                  const hasCheckedOut = Boolean(record.outTime);
+
+                  const canCheckIn = !hasCheckedIn;
+                  const canLunchOut = hasCheckedIn && !hasLunchOut && !hasCheckedOut;
+                  const canLunchIn = hasLunchOut && !hasLunchIn && !hasCheckedOut;
+                  const canCheckOut = hasCheckedIn && (!hasLunchOut || hasLunchIn) && !hasCheckedOut;
+
+                  return (
+                    <div
+                      key={emp.id}
+                      className={`bg-white dark:bg-slate-900 rounded-2xl border transition-all duration-200 overflow-hidden shadow-sm flex flex-col justify-between ${
+                        metrics.status === 'WORKING'
+                          ? 'border-emerald-400 dark:border-emerald-600 shadow-emerald-500/10 shadow-lg'
+                          : metrics.status === 'ON_LUNCH'
+                          ? 'border-amber-400 dark:border-amber-600 shadow-amber-500/10 shadow-lg'
+                          : metrics.status === 'COMPLETED'
+                          ? 'border-blue-300 dark:border-blue-800'
+                          : 'border-slate-200 dark:border-slate-800'
+                      }`}
+                    >
+                      {/* Card Top */}
+                      <div className="p-4 sm:p-5">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="flex items-center gap-3">
+                            <div className={`w-11 h-11 rounded-xl flex items-center justify-center font-bold text-base shadow-sm ${emp.avatarBg || 'bg-indigo-100 text-indigo-700'}`}>
+                              {emp.name.substring(0, 2).toUpperCase()}
+                            </div>
+                            <div>
+                              <div className="flex items-center gap-1.5">
+                                <h3 className="font-bold text-slate-900 dark:text-white text-base">
+                                  {emp.name}
+                                </h3>
+                                <span className="text-[10px] font-mono text-slate-400">{emp.id}</span>
+                              </div>
+                              <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">
+                                {emp.role}
+                              </p>
+                            </div>
+                          </div>
+
+                          {/* Edit manual icon */}
+                          <button
+                            onClick={() => setSelectedEmployeeForModal(emp)}
+                            className="text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 p-1 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                            title="Edit timestamps manually"
+                          >
+                            <Icons.Edit3 className="w-4 h-4" />
+                          </button>
+                        </div>
+
+                        {/* Status Badge & Work Mode (Office vs Field) */}
+                        <div className="mt-3.5 flex items-center gap-2 flex-wrap">
+                          <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold ${metrics.badgeClass}`}>
+                            <span className="w-1.5 h-1.5 rounded-full bg-current"></span>
+                            {metrics.statusLabel}
+                          </span>
+
+                          {hasCheckedIn && (
+                            <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-bold ${
+                              record.workLocation === 'Field'
+                                ? 'bg-amber-100 text-amber-800 dark:bg-amber-950/70 dark:text-amber-300 border border-amber-300'
+                                : 'bg-blue-100 text-blue-800 dark:bg-blue-950/70 dark:text-blue-300 border border-blue-300'
+                            }`}>
+                              {record.workLocation === 'Field' ? '🚗 Field' : '🏢 Office'}
+                            </span>
+                          )}
+                        </div>
+
+                        {/* Location / Area Display (Anti-Cheat) */}
+                        {hasCheckedIn && record.areaName && (
+                          <div className="mt-2 text-[11px] bg-slate-50 dark:bg-slate-800/80 p-2 rounded-lg border border-slate-200 dark:border-slate-700 flex items-start gap-1.5">
+                            <Icons.MapPin className="w-3.5 h-3.5 text-indigo-500 shrink-0 mt-0.5" />
+                            <div className="leading-tight overflow-hidden text-ellipsis">
+                              <span className="font-semibold text-slate-700 dark:text-slate-200 block truncate">
+                                {record.areaName}
+                              </span>
+                              <div className="flex items-center gap-2 mt-0.5 text-[10px] text-slate-400">
+                                {record.distanceMeters !== undefined && record.distanceMeters !== null && (
+                                  <span>{record.distanceMeters <= (officeGeo.radiusMeters || 250) ? '✅ Office Proximity' : `Distance: ${(record.distanceMeters / 1000).toFixed(1)} km`}</span>
+                                )}
+                                {record.mapUrl && (
+                                  <a href={record.mapUrl} target="_blank" rel="noreferrer" className="text-indigo-600 dark:text-indigo-400 hover:underline">
+                                    Map ↗
+                                  </a>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Timestamps Grid */}
+                        <div className="mt-3.5 grid grid-cols-2 gap-2 text-xs bg-slate-50 dark:bg-slate-800/50 p-3 rounded-xl border border-slate-100 dark:border-slate-800">
+                          <div>
+                            <span className="text-slate-400 block text-[10px] uppercase font-semibold">Office In</span>
+                            <span className="font-mono font-bold text-slate-700 dark:text-slate-200">
+                              {record.inTime || '—'}
+                            </span>
+                          </div>
+                          <div>
+                            <span className="text-slate-400 block text-[10px] uppercase font-semibold">Office Out</span>
+                            <span className="font-mono font-bold text-slate-700 dark:text-slate-200">
+                              {record.outTime || '—'}
+                            </span>
+                          </div>
+                          <div className="border-t border-slate-200 dark:border-slate-700 pt-1.5 mt-0.5">
+                            <span className="text-slate-400 block text-[10px] uppercase font-semibold">Lunch Out</span>
+                            <span className="font-mono text-slate-600 dark:text-slate-300">
+                              {record.lunchOut || '—'}
+                            </span>
+                          </div>
+                          <div className="border-t border-slate-200 dark:border-slate-700 pt-1.5 mt-0.5">
+                            <span className="text-slate-400 block text-[10px] uppercase font-semibold">Lunch In</span>
+                            <span className="font-mono text-slate-600 dark:text-slate-300">
+                              {record.lunchIn || '—'}
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* TOTAL DURATION BOX */}
+                        <div className="mt-3 bg-indigo-50/70 dark:bg-indigo-950/40 border border-indigo-100 dark:border-indigo-900/60 rounded-xl p-3">
+                          <div className="flex items-center justify-between text-xs">
+                            <span className="font-semibold text-indigo-900 dark:text-indigo-200">
+                              {hasCheckedOut ? 'Total Working Duration:' : 'Elapsed Work Time:'}
+                            </span>
+                            <span className="font-mono font-extrabold text-indigo-700 dark:text-indigo-300 text-sm">
+                              {formatMinutesToHuman(metrics.netMins)}
+                            </span>
+                          </div>
+                          <div className="mt-1 flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400">
+                            <span>Lunch Duration: <strong>{metrics.lunchDurationMins > 0 ? `${metrics.lunchDurationMins}m` : '0m'}</strong></span>
+                            <span className={metrics.complianceClass}>
+                              {metrics.shiftCompliance}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Card Bottom: Punch Action Buttons */}
+                      <div className="p-3 bg-slate-50/80 dark:bg-slate-900/80 border-t border-slate-100 dark:border-slate-800 grid grid-cols-2 gap-2">
+                        {/* 1. Office In (Opens Location & GPS Modal) */}
+                        <button
+                          disabled={!canCheckIn}
+                          onClick={() => setCheckInModalEmployee(emp)}
+                          className={`flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold transition-all ${
+                            canCheckIn
+                              ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm'
+                              : 'bg-slate-200/60 dark:bg-slate-800 text-slate-400 cursor-not-allowed'
+                          }`}
+                        >
+                          <Icons.LogIn className="w-3.5 h-3.5" />
+                          Office In
+                        </button>
+
+                        {/* 2. Lunch Out */}
+                        <button
+                          disabled={!canLunchOut}
+                          onClick={() => handleLunchOut(emp.id)}
+                          className={`flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold transition-all ${
+                            canLunchOut
+                              ? 'bg-amber-500 hover:bg-amber-600 text-white shadow-sm'
+                              : 'bg-slate-200/60 dark:bg-slate-800 text-slate-400 cursor-not-allowed'
+                          }`}
+                          title="Start Lunch Break (2:00 PM - 2:45 PM)"
+                        >
+                          <Icons.Utensils className="w-3.5 h-3.5" />
+                          Lunch Out
+                        </button>
+
+                        {/* 3. Lunch In */}
+                        <button
+                          disabled={!canLunchIn}
+                          onClick={() => handleLunchIn(emp.id)}
+                          className={`flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold transition-all ${
+                            canLunchIn
+                              ? 'bg-amber-600 hover:bg-amber-700 text-white shadow-sm animate-pulse'
+                              : 'bg-slate-200/60 dark:bg-slate-800 text-slate-400 cursor-not-allowed'
+                          }`}
+                          title="Back from Lunch Break"
+                        >
+                          <Icons.Coffee className="w-3.5 h-3.5" />
+                          Lunch In
+                        </button>
+
+                        {/* 4. Office Out */}
+                        <button
+                          disabled={!canCheckOut}
+                          onClick={() => handlePunchOut(emp.id)}
+                          className={`flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold transition-all ${
+                            canCheckOut
+                              ? 'bg-rose-600 hover:bg-rose-700 text-white shadow-sm'
+                              : 'bg-slate-200/60 dark:bg-slate-800 text-slate-400 cursor-not-allowed'
+                          }`}
+                          title="Finish Office Shift (6:30 PM)"
+                        >
+                          <Icons.LogOut className="w-3.5 h-3.5" />
+                          Office Out
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* TAB 2: WEEKLY TIMESHEET */}
+          {activeTab === 'weekly' && (
+            <div className="mt-8">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
+                <div>
+                  <h2 className="text-lg font-bold text-slate-900 dark:text-white">
+                    Weekly Attendance & Hours Breakdown
+                  </h2>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    Week of {weekDays[0].formatted} – {weekDays[6].formatted} &bull; Target: 46h 30m per week
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-medium text-slate-500">Days:</span>
+                  <div className="flex gap-1">
+                    {weekDays.map(d => (
+                      <button
+                        key={d.dateStr}
+                        onClick={() => setCurrentDateStr(d.dateStr)}
+                        className={`px-2.5 py-1 text-xs rounded-lg font-medium transition-colors ${
+                          d.isCurrentSelected
+                            ? 'bg-indigo-600 text-white font-bold'
+                            : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200'
+                        }`}
+                      >
+                        {d.dayName}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* Weekly Matrix Table */}
+              <div className="overflow-x-auto bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm">
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-slate-50 dark:bg-slate-800/60 text-slate-700 dark:text-slate-300 uppercase font-semibold border-b border-slate-200 dark:border-slate-800">
+                    <tr>
+                      <th className="py-3 px-4">Employee</th>
+                      {weekDays.map(day => (
+                        <th key={day.dateStr} className={`py-3 px-3 text-center ${day.isCurrentSelected ? 'bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 font-bold' : ''}`}>
+                          <div>{day.dayName}</div>
+                          <div className="text-[10px] font-normal text-slate-400">{day.formatted}</div>
+                        </th>
+                      ))}
+                      <th className="py-3 px-4 text-center bg-indigo-100/50 dark:bg-indigo-900/30 text-indigo-900 dark:text-indigo-200 font-bold">
+                        Weekly Total
+                      </th>
+                      <th className="py-3 px-4 text-center">Avg / Day</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                    {employees.map(emp => {
+                      let weeklyTotalMinutes = 0;
+                      let daysPresent = 0;
+
+                      return (
+                        <tr key={emp.id} className="hover:bg-slate-50/70 dark:hover:bg-slate-800/40 transition-colors">
+                          <td className="py-3.5 px-4 font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                            <span className={`w-6 h-6 rounded-md flex items-center justify-center text-[10px] font-bold ${emp.avatarBg || 'bg-indigo-100 text-indigo-700'}`}>
+                              {emp.name.substring(0, 1)}
+                            </span>
+                            <div>
+                              <div>{emp.name}</div>
+                              <span className="text-[10px] text-slate-400 font-medium">{emp.role}</span>
+                            </div>
+                          </td>
+
+                          {weekDays.map(day => {
+                            const dayRecord = (attendanceData[day.dateStr] || {})[emp.id];
+                            const metrics = calculateRecordMetrics(dayRecord, liveTime, officeGeo);
+                            const hasRecord = dayRecord && dayRecord.inTime;
+
+                            if (hasRecord && metrics.netMins > 0) {
+                              weeklyTotalMinutes += metrics.netMins;
+                              daysPresent++;
+                            }
+
+                            return (
+                              <td key={day.dateStr} className={`py-3 px-2 text-center ${day.isCurrentSelected ? 'bg-indigo-50/40 dark:bg-indigo-950/20' : ''}`}>
+                                {hasRecord ? (
+                                  <div className="inline-block bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded-lg">
+                                    <div className="font-mono font-bold text-slate-800 dark:text-slate-200">
+                                      {formatMinutesToHuman(metrics.netMins)}
+                                    </div>
+                                    <div className="text-[9px] text-slate-400 flex items-center justify-center gap-1">
+                                      <span>{dayRecord.workLocation === 'Field' ? '🚗' : '🏢'}</span>
+                                      <span>L: {metrics.lunchDurationMins}m</span>
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <span className="text-slate-300 dark:text-slate-600">—</span>
+                                )}
+                              </td>
+                            );
+                          })}
+
+                          <td className="py-3.5 px-4 text-center font-mono font-bold text-sm bg-indigo-50/30 dark:bg-indigo-950/20 text-indigo-700 dark:text-indigo-300">
+                            {formatMinutesToHuman(weeklyTotalMinutes)}
+                          </td>
+
+                          <td className="py-3.5 px-4 text-center font-mono text-slate-600 dark:text-slate-400">
+                            {daysPresent > 0 ? formatMinutesToHuman(Math.round(weeklyTotalMinutes / daysPresent)) : '0m'}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {/* TAB 3: FULL DAY LOG HISTORY TABLE */}
+          {activeTab === 'history' && (
+            <div className="mt-8">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-lg font-bold text-slate-900 dark:text-white">
+                  Daily Attendance & Verified Location Log ({new Date(currentDateStr + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })})
+                </h2>
+                <button
+                  onClick={() => window.print()}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-50 transition-colors"
+                >
+                  <Icons.Printer className="w-4 h-4" />
+                  Print View
+                </button>
+              </div>
+
+              <div className="overflow-x-auto bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm">
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-slate-50 dark:bg-slate-800/60 text-slate-700 dark:text-slate-300 uppercase font-semibold border-b border-slate-200 dark:border-slate-800">
+                    <tr>
+                      <th className="py-3 px-3">#</th>
+                      <th className="py-3 px-3">Employee</th>
+                      <th className="py-3 px-3">Role</th>
+                      <th className="py-3 px-3">Location Mode</th>
+                      <th className="py-3 px-3">GPS Area / Address</th>
+                      <th className="py-3 px-3">Office In</th>
+                      <th className="py-3 px-3">Lunch Out</th>
+                      <th className="py-3 px-3">Lunch In</th>
+                      <th className="py-3 px-3">Lunch Time</th>
+                      <th className="py-3 px-3">Office Out</th>
+                      <th className="py-3 px-3 font-bold text-indigo-600 dark:text-indigo-400">Net Working Time</th>
+                      <th className="py-3 px-3">Shift Status</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                    {employees.map((emp, idx) => {
+                      const rec = todayRecords[emp.id] || {};
+                      const metrics = calculateRecordMetrics(rec, liveTime, officeGeo);
+
+                      return (
+                        <tr key={emp.id} className="hover:bg-slate-50/70 dark:hover:bg-slate-800/40">
+                          <td className="py-3 px-3 text-slate-400 font-mono">{idx + 1}</td>
+                          <td className="py-3 px-3 font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                            <span className={`w-6 h-6 rounded-md flex items-center justify-center text-[10px] font-bold ${emp.avatarBg || 'bg-indigo-100 text-indigo-700'}`}>
+                              {emp.name.substring(0, 1)}
+                            </span>
+                            {emp.name}
+                          </td>
+                          <td className="py-3 px-3 text-slate-500 font-medium">{emp.role}</td>
+                          <td className="py-3 px-3">
+                            <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                              rec.workLocation === 'Field'
+                                ? 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300'
+                                : 'bg-blue-100 text-blue-800 dark:bg-blue-950/60 dark:text-blue-300'
+                            }`}>
+                              {rec.workLocation === 'Field' ? '🚗 Field' : '🏢 Office'}
+                            </span>
+                          </td>
+                          <td className="py-3 px-3 max-w-[200px] truncate text-slate-600 dark:text-slate-300">
+                            {rec.areaName ? (
+                              <div className="flex items-center gap-1 truncate" title={rec.areaName}>
+                                <span className="truncate">{rec.areaName}</span>
+                                {rec.mapUrl && (
+                                  <a href={rec.mapUrl} target="_blank" rel="noreferrer" className="text-indigo-500 hover:text-indigo-700 shrink-0">
+                                    [Map]
+                                  </a>
+                                )}
+                              </div>
+                            ) : (
+                              <span className="text-slate-400">—</span>
+                            )}
+                          </td>
+                          <td className="py-3 px-3 font-mono font-medium">{rec.inTime || '—'}</td>
+                          <td className="py-3 px-3 font-mono text-slate-600 dark:text-slate-300">{rec.lunchOut || '—'}</td>
+                          <td className="py-3 px-3 font-mono text-slate-600 dark:text-slate-300">{rec.lunchIn || '—'}</td>
+                          <td className="py-3 px-3 font-mono">
+                            {metrics.lunchDurationMins > 0 ? `${metrics.lunchDurationMins}m` : '—'}
+                          </td>
+                          <td className="py-3 px-3 font-mono font-medium">{rec.outTime || '—'}</td>
+                          <td className="py-3 px-3 font-mono font-bold text-indigo-600 dark:text-indigo-400 text-sm">
+                            {metrics.netMins > 0 ? formatMinutesToHuman(metrics.netMins) : '—'}
+                          </td>
+                          <td className="py-3 px-3">
+                            <span className={`px-2 py-0.5 rounded text-[11px] font-semibold ${metrics.complianceClass}`}>
+                              {metrics.status === 'COMPLETED' ? metrics.shiftCompliance : metrics.statusLabel}
+                            </span>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {/* CHECK-IN LOCATION POPUP MODAL (Office or Field with live GPS Area Detection) */}
+          {checkInModalEmployee && (
+            <CheckInLocationModal
+              employee={checkInModalEmployee}
+              officeGeo={officeGeo}
+              liveTime={liveTime}
+              onClose={() => setCheckInModalEmployee(null)}
+              onConfirm={handleConfirmCheckIn}
+            />
+          )}
+
+          {/* INDIVIDUAL LOGOUT POPUP MODAL */}
+          {justLoggedOutSummary && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-sm animate-fade-in">
+              <div className="bg-white dark:bg-slate-900 rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-200 dark:border-slate-800 transform transition-all">
+                <div className="text-center">
+                  <div className="w-16 h-16 rounded-2xl bg-emerald-100 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 mx-auto flex items-center justify-center shadow-lg shadow-emerald-500/20 mb-4">
+                    <Icons.CheckCircle className="w-9 h-9" />
+                  </div>
+                  <h3 className="text-xl font-extrabold text-slate-900 dark:text-white">
+                    {justLoggedOutSummary.employee.name} Logged Out Successfully!
+                  </h3>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                    Role: <span className="font-semibold">{justLoggedOutSummary.employee.role}</span> &bull; {new Date(currentDateStr + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}
+                  </p>
+                </div>
+
+                {/* Big Total Duration Highlight */}
+                <div className="mt-5 bg-gradient-to-br from-indigo-500 to-indigo-700 text-white rounded-2xl p-4 text-center shadow-md">
+                  <div className="text-xs font-semibold uppercase tracking-wider text-indigo-100">
+                    Total Net Working Duration
+                  </div>
+                  <div className="text-3xl font-mono font-extrabold mt-1">
+                    {formatMinutesToDetailed(justLoggedOutSummary.netMins)}
+                  </div>
+                  <div className="mt-1 text-xs text-indigo-200 font-medium">
+                    Shift Status: {justLoggedOutSummary.shiftCompliance}
+                  </div>
+                </div>
+
+                {/* Details Breakdown */}
+                <div className="mt-4 bg-slate-50 dark:bg-slate-800/60 rounded-xl p-3.5 space-y-2 text-xs">
+                  <div className="flex justify-between">
+                    <span className="text-slate-500">Work Mode:</span>
+                    <span className="font-bold text-slate-800 dark:text-slate-200">
+                      {justLoggedOutSummary.workLocation === 'Field' ? '🚗 Field' : '🏢 Office'}
+                      {justLoggedOutSummary.locationNote ? ` (${justLoggedOutSummary.locationNote})` : ''}
+                    </span>
+                  </div>
+                  {justLoggedOutSummary.areaName && (
+                    <div className="flex justify-between text-[11px]">
+                      <span className="text-slate-500">GPS Area:</span>
+                      <span className="text-right text-slate-700 dark:text-slate-300 max-w-[200px] truncate">
+                        {justLoggedOutSummary.areaName}
+                      </span>
+                    </div>
+                  )}
+                  <div className="flex justify-between">
+                    <span className="text-slate-500">Office Check-In:</span>
+                    <span className="font-mono font-bold text-slate-800 dark:text-slate-200">{justLoggedOutSummary.inTime}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-500">Lunch Break:</span>
+                    <span className="font-mono text-slate-700 dark:text-slate-300">
+                      {justLoggedOutSummary.lunchOut} &rarr; {justLoggedOutSummary.lunchIn} ({justLoggedOutSummary.lunchDurationMins}m)
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-500">Office Check-Out:</span>
+                    <span className="font-mono font-bold text-slate-800 dark:text-slate-200">{justLoggedOutSummary.outTime}</span>
+                  </div>
+                  <div className="flex justify-between border-t border-slate-200 dark:border-slate-700 pt-2">
+                    <span className="text-slate-500">Gross Office Span:</span>
+                    <span className="font-mono font-medium">{formatMinutesToHuman(justLoggedOutSummary.grossMins)}</span>
+                  </div>
+                </div>
+
+                <div className="mt-6">
+                  <button
+                    onClick={() => setJustLoggedOutSummary(null)}
+                    className="w-full py-3 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-sm shadow-lg shadow-indigo-500/25 transition-all"
+                  >
+                    Done & Close
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* CELEBRATION MODAL WHEN ALL 7 LOGGED OUT */}
+          {showAllLoggedOutModal && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-md animate-fade-in">
+              <div className="bg-white dark:bg-slate-900 rounded-3xl max-w-lg w-full p-6 sm:p-8 shadow-2xl border border-indigo-200 dark:border-indigo-900 text-center">
+                <div className="w-20 h-20 rounded-3xl bg-gradient-to-tr from-amber-400 via-orange-500 to-rose-500 text-white mx-auto flex items-center justify-center shadow-xl shadow-orange-500/30 mb-4 animate-bounce">
+                  <Icons.Sparkles className="w-10 h-10" />
+                </div>
+                <h3 className="text-2xl font-extrabold text-slate-900 dark:text-white">
+                  All {employees.length} Staff Members Have Checked Out!
+                </h3>
+                <p className="text-sm text-slate-500 dark:text-slate-400 mt-2">
+                  All robotics team members have concluded their 10:00 AM – 6:30 PM shift today. The complete summary report is compiled for Chirag (Owner).
+                </p>
+
+                <div className="mt-6 flex flex-col sm:flex-row gap-3">
+                  <button
+                    onClick={() => {
+                      generatePDFReport();
+                      setShowAllLoggedOutModal(false);
+                    }}
+                    className="flex-1 py-3 px-4 rounded-xl bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-700 hover:to-violet-700 text-white font-bold text-sm shadow-lg shadow-indigo-500/30 transition-all flex items-center justify-center gap-2"
+                  >
+                    <Icons.FilePdf className="w-5 h-5" />
+                    Download Final PDF Report
+                  </button>
+                  <button
+                    onClick={() => setShowAllLoggedOutModal(false)}
+                    className="py-3 px-5 rounded-xl border border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-300 font-semibold text-sm hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                  >
+                    View Dashboard
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* OWNER SPACE MODAL (Chirag's Login & Password Management Space) */}
+          {showOwnerSpaceModal && (
+            <OwnerSpaceModal
+              isOpen={showOwnerSpaceModal}
+              onClose={() => {
+                setShowOwnerSpaceModal(false);
+                setPendingActionAfterLogin(null);
+              }}
+              ownerAuth={ownerAuth}
+              onSaveCredentials={(newCreds) => setOwnerAuth(newCreds)}
+              isLoggedIn={isOwnerLoggedIn}
+              onLogin={() => setIsOwnerLoggedIn(true)}
+              onLogout={() => setIsOwnerLoggedIn(false)}
+              pendingAction={pendingActionAfterLogin}
+              onClearPendingAction={() => setPendingActionAfterLogin(null)}
+              initialTab={ownerSpaceTab}
+              onExecuteCSV={performCSVDownload}
+              officeGeo={officeGeo}
+              onSaveOfficeGeo={(newGeo) => setOfficeGeo(newGeo)}
+            />
+          )}
+
+          {/* MANAGE STAFF MODAL */}
+          {showManageStaffModal && (
+            <ManageStaffModal
+              employees={employees}
+              onClose={() => setShowManageStaffModal(false)}
+              onSave={(updatedList) => {
+                setEmployees(updatedList);
+                setShowManageStaffModal(false);
+              }}
+              onResetDefaults={() => {
+                if (window.confirm("Reset employee list to the default team (Muskan, Rupa, Abhinav, Abhijeet, Rohit, Niyati, Milan)?")) {
+                  setEmployees(DEFAULT_EMPLOYEES);
+                  setShowManageStaffModal(false);
+                }
+              }}
+            />
+          )}
+
+          {/* MANUAL EDIT TIMESTAMP MODAL */}
+          {selectedEmployeeForModal && (
+            <ManualEditModal
+              employee={selectedEmployeeForModal}
+              record={(attendanceData[currentDateStr] || {})[selectedEmployeeForModal.id] || {}}
+              currentDateStr={currentDateStr}
+              onClose={() => setSelectedEmployeeForModal(null)}
+              onSave={(updatedTimes) => {
+                setAttendanceData(prev => ({
+                  ...prev,
+                  [currentDateStr]: {
+                    ...(prev[currentDateStr] || {}),
+                    [selectedEmployeeForModal.id]: updatedTimes
+                  }
+                }));
+                setSelectedEmployeeForModal(null);
+              }}
+            />
+          )}
+
+          {/* PRINTABLE CONTAINER FOR BROWSER PRINT */}
+          <div id="printable-summary" className="hidden print:block">
+            <h1 style={{ fontSize: '22px', fontWeight: 'bold', marginBottom: '6px' }}>DAILY OFFICE ATTENDANCE & SUMMARY REPORT</h1>
+            <p style={{ fontSize: '13px', color: '#555', marginBottom: '16px' }}>
+              Date: {currentDateStr} | Standard Shift: 10:00 AM – 6:30 PM | Lunch Break: 2:00 PM – 2:45 PM | Owner: Chirag
+            </p>
+            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '12px' }}>
+              <thead>
+                <tr style={{ background: '#f1f5f9', borderBottom: '2px solid #cbd5e1' }}>
+                  <th style={{ padding: '8px' }}>#</th>
+                  <th style={{ padding: '8px' }}>Name</th>
+                  <th style={{ padding: '8px' }}>Role</th>
+                  <th style={{ padding: '8px' }}>Mode</th>
+                  <th style={{ padding: '8px' }}>In Time</th>
+                  <th style={{ padding: '8px' }}>Lunch Out</th>
+                  <th style={{ padding: '8px' }}>Lunch In</th>
+                  <th style={{ padding: '8px' }}>Lunch Duration</th>
+                  <th style={{ padding: '8px' }}>Out Time</th>
+                  <th style={{ padding: '8px' }}>Net Work Time</th>
+                  <th style={{ padding: '8px' }}>Compliance</th>
+                </tr>
+              </thead>
+              <tbody>
+                {employees.map((emp, i) => {
+                  const r = (attendanceData[currentDateStr] || {})[emp.id] || {};
+                  const m = calculateRecordMetrics(r, liveTime, officeGeo);
+                  return (
+                    <tr key={emp.id} style={{ borderBottom: '1px solid #e2e8f0' }}>
+                      <td style={{ padding: '8px' }}>{i + 1}</td>
+                      <td style={{ padding: '8px', fontWeight: 'bold' }}>{emp.name}</td>
+                      <td style={{ padding: '8px' }}>{emp.role}</td>
+                      <td style={{ padding: '8px' }}>{r.workLocation || 'Office'}</td>
+                      <td style={{ padding: '8px' }}>{r.inTime || '—'}</td>
+                      <td style={{ padding: '8px' }}>{r.lunchOut || '—'}</td>
+                      <td style={{ padding: '8px' }}>{r.lunchIn || '—'}</td>
+                      <td style={{ padding: '8px' }}>{m.lunchDurationMins > 0 ? `${m.lunchDurationMins}m` : '—'}</td>
+                      <td style={{ padding: '8px' }}>{r.outTime || '—'}</td>
+                      <td style={{ padding: '8px', fontWeight: 'bold' }}>{m.netMins > 0 ? formatMinutesToHuman(m.netMins) : '—'}</td>
+                      <td style={{ padding: '8px' }}>{m.status === 'COMPLETED' ? m.shiftCompliance : m.statusLabel}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+
+        </div>
+      );
+    }
+
+    // POPUP MODAL: Office In Location Selection with Client-side Live GPS & Area Detection
+    function CheckInLocationModal({ employee, officeGeo, liveTime, onConfirm, onClose }) {
+      const [selectedMode, setSelectedMode] = useState('Office'); // 'Office' or 'Field'
+      const [notes, setNotes] = useState('');
+      const [isDetecting, setIsDetecting] = useState(false);
+      const [geoData, setGeoData] = useState(null);
+      const [geoError, setGeoError] = useState('');
+
+      // Auto-fetch location on modal open (Pure browser client-side, zero backend!)
+      const fetchLiveLocation = () => {
+        if (!navigator.geolocation) {
+          setGeoError('GPS Geolocation is not supported by this browser.');
+          return;
+        }
+
+        setIsDetecting(true);
+        setGeoError('');
+
+        navigator.geolocation.getCurrentPosition(
+          async (pos) => {
+            const lat = pos.coords.latitude;
+            const lon = pos.coords.longitude;
+            const accuracy = Math.round(pos.coords.accuracy);
+
+            let areaName = `Lat: ${lat.toFixed(4)}, Lon: ${lon.toFixed(4)}`;
+            
+            // Client-side Reverse Geocoding to get human-readable Area/City
+            try {
+              const res = await fetch(`https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat}&longitude=${lon}&localityLanguage=en`);
+              if (res.ok) {
+                const data = await res.json();
+                const parts = [data.locality || data.localityInfo?.administrative?.[3]?.name, data.city || data.principalSubdivision, data.countryName].filter(Boolean);
+                if (parts.length > 0) {
+                  areaName = parts.join(', ');
+                }
+              }
+            } catch (err) {
+              // Fallback to coordinates
+              areaName = `GPS: ${lat.toFixed(4)}, ${lon.toFixed(4)}`;
+            }
+
+            // Calculate distance from configured office location
+            const distance = calculateDistanceInMeters(lat, lon, officeGeo.lat, officeGeo.lon);
+            const isVerifiedOffice = distance !== null && distance <= (officeGeo.radiusMeters || 250);
+
+            setGeoData({
+              latitude: lat,
+              longitude: lon,
+              accuracy,
+              areaName,
+              distanceMeters: distance,
+              isVerifiedOffice,
+              mapUrl: `https://maps.google.com/?q=${lat},${lon}`
+            });
+            setIsDetecting(false);
+          },
+          (err) => {
+            setIsDetecting(false);
+            if (err.code === 1) {
+              setGeoError('Location permission denied. Please allow location access in your browser to verify area.');
+            } else {
+              setGeoError('Unable to retrieve GPS signal. Coordinates set to approximate.');
+            }
+          },
+          { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+        );
+      };
+
+      // Automatically attempt detection on mount
+      useEffect(() => {
+        fetchLiveLocation();
+      }, []);
+
+      const handleSubmit = () => {
+        onConfirm(employee.id, {
+          workLocation: selectedMode,
+          locationNote: notes.trim(),
+          latitude: geoData ? geoData.latitude : null,
+          longitude: geoData ? geoData.longitude : null,
+          accuracy: geoData ? geoData.accuracy : null,
+          areaName: geoData ? geoData.areaName : 'Standard Check-In',
+          distanceMeters: geoData ? geoData.distanceMeters : null,
+          isVerifiedOffice: geoData ? geoData.isVerifiedOffice : (selectedMode === 'Office'),
+          mapUrl: geoData ? geoData.mapUrl : null
+        });
+      };
+
+      return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-fade-in">
+          <div className="bg-white dark:bg-slate-900 rounded-3xl max-w-md w-full p-6 shadow-2xl border border-indigo-200 dark:border-indigo-900">
+            {/* Header */}
+            <div className="text-center pb-3 border-b border-slate-200 dark:border-slate-800">
+              <div className={`w-14 h-14 rounded-2xl flex items-center justify-center font-bold text-lg mx-auto shadow-md mb-2 ${employee.avatarBg || 'bg-indigo-100 text-indigo-700'}`}>
+                {employee.name.substring(0, 2).toUpperCase()}
+              </div>
+              <h3 className="text-xl font-extrabold text-slate-900 dark:text-white">
+                Office Check-In: {employee.name}
+              </h3>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                Role: <span className="font-semibold text-slate-700 dark:text-slate-300">{employee.role}</span> &bull; Time: <span className="font-mono font-bold text-indigo-600 dark:text-indigo-400">{liveTime}</span>
+              </p>
+            </div>
+
+            {/* Selection Options: Office or Field */}
+            <div className="mt-4">
+              <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-2">
+                Select Work Location for Today:
+              </label>
+
+              <div className="grid grid-cols-2 gap-3">
+                {/* 1. Office Option */}
+                <button
+                  type="button"
+                  onClick={() => setSelectedMode('Office')}
+                  className={`p-3.5 rounded-2xl border-2 text-left transition-all flex flex-col justify-between ${
+                    selectedMode === 'Office'
+                      ? 'border-indigo-600 bg-indigo-50/70 dark:bg-indigo-950/50 shadow-md ring-2 ring-indigo-500/20'
+                      : 'border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 bg-slate-50/60 dark:bg-slate-800/40'
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="text-2xl">🏢</span>
+                    <span className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${selectedMode === 'Office' ? 'border-indigo-600 bg-indigo-600' : 'border-slate-300'}`}>
+                      {selectedMode === 'Office' && <span className="w-1.5 h-1.5 rounded-full bg-white"></span>}
+                    </span>
+                  </div>
+                  <div className="mt-2.5">
+                    <div className="font-bold text-sm text-slate-900 dark:text-white">Office</div>
+                    <div className="text-[11px] text-slate-500 dark:text-slate-400">Head Office / Lab</div>
+                  </div>
+                </button>
+
+                {/* 2. Field Option */}
+                <button
+                  type="button"
+                  onClick={() => setSelectedMode('Field')}
+                  className={`p-3.5 rounded-2xl border-2 text-left transition-all flex flex-col justify-between ${
+                    selectedMode === 'Field'
+                      ? 'border-amber-600 bg-amber-50/70 dark:bg-amber-950/50 shadow-md ring-2 ring-amber-500/20'
+                      : 'border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 bg-slate-50/60 dark:bg-slate-800/40'
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="text-2xl">🚗</span>
+                    <span className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${selectedMode === 'Field' ? 'border-amber-600 bg-amber-600' : 'border-slate-300'}`}>
+                      {selectedMode === 'Field' && <span className="w-1.5 h-1.5 rounded-full bg-white"></span>}
+                    </span>
+                  </div>
+                  <div className="mt-2.5">
+                    <div className="font-bold text-sm text-slate-900 dark:text-white">Field</div>
+                    <div className="text-[11px] text-slate-500 dark:text-slate-400">Site Visit / Outdoor</div>
+                  </div>
+                </button>
+              </div>
+
+              {/* Optional Field Notes */}
+              {selectedMode === 'Field' && (
+                <div className="mt-3">
+                  <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1">
+                    Client Name / Site Location:
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Factory Site, Client Testing Lab..."
+                    value={notes}
+                    onChange={(e) => setNotes(e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-amber-500"
+                  />
+                </div>
+              )}
+            </div>
+
+            {/* LIVE GPS & AREA VERIFICATION BOX (Anti-Cheat) */}
+            <div className="mt-4 p-3 rounded-2xl bg-slate-100/80 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 text-xs">
+              <div className="flex items-center justify-between mb-1.5">
+                <span className="font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+                  <Icons.MapPin className="w-4 h-4 text-indigo-500" />
+                  Live GPS Area Verification:
+                </span>
+                <button
+                  type="button"
+                  onClick={fetchLiveLocation}
+                  disabled={isDetecting}
+                  className="text-[11px] font-semibold text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-1"
+                >
+                  <Icons.RefreshCw className={`w-3 h-3 ${isDetecting ? 'animate-spin' : ''}`} />
+                  {isDetecting ? 'Detecting...' : 'Refresh GPS'}
+                </button>
+              </div>
+
+              {isDetecting ? (
+                <div className="text-slate-500 py-1 flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-indigo-500 animate-ping"></span>
+                  Detecting real device area and GPS coordinates...
+                </div>
+              ) : geoData ? (
+                <div className="space-y-1">
+                  <div className="font-semibold text-slate-900 dark:text-white flex items-center justify-between">
+                    <span className="truncate pr-1">📍 {geoData.areaName}</span>
+                    <a href={geoData.mapUrl} target="_blank" rel="noreferrer" className="text-indigo-600 dark:text-indigo-400 hover:underline shrink-0 text-[10px]">
+                      View Map ↗
+                    </a>
+                  </div>
+                  <div className="text-[11px] text-slate-500 dark:text-slate-400 flex items-center justify-between">
+                    <span>Accuracy: ±{geoData.accuracy}m</span>
+                    {geoData.distanceMeters !== null && (
+                      <span className={`font-bold ${
+                        selectedMode === 'Office' && geoData.distanceMeters > (officeGeo.radiusMeters || 250)
+                          ? 'text-rose-600 dark:text-rose-400'
+                          : 'text-emerald-600 dark:text-emerald-400'
+                      }`}>
+                        {geoData.distanceMeters <= (officeGeo.radiusMeters || 250)
+                          ? '✅ Verified Inside Office'
+                          : `⚠️ ${(geoData.distanceMeters / 1000).toFixed(1)} km from Office`}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              ) : geoError ? (
+                <div className="text-amber-600 dark:text-amber-400 text-[11px] leading-tight">
+                  ⚠️ {geoError}
+                </div>
+              ) : (
+                <div className="text-slate-400 text-[11px]">
+                  Click "Refresh GPS" to verify location.
+                </div>
+              )}
+            </div>
+
+            {/* Actions */}
+            <div className="mt-5 flex gap-2.5">
+              <button
+                type="button"
+                onClick={onClose}
+                className="flex-1 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 font-bold text-xs hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleSubmit}
+                className="flex-1 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shadow-lg shadow-indigo-500/25 transition-all flex items-center justify-center gap-1.5"
+              >
+                <Icons.CheckCircle className="w-4 h-4" />
+                Confirm Check-In
+              </button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // MODAL: Chirag (Owner) Space with ID/Password Login & Credentials Creation
+    function OwnerSpaceModal({
+      isOpen,
+      onClose,
+      ownerAuth,
+      onSaveCredentials,
+      isLoggedIn,
+      onLogin,
+      onLogout,
+      pendingAction,
+      onClearPendingAction,
+      initialTab = 'login',
+      onExecuteCSV,
+      officeGeo,
+      onSaveOfficeGeo
+    }) {
+      const [tab, setTab] = useState(initialTab); // 'login', 'create', 'geofence'
+
+      // Login form state
+      const [loginId, setLoginId] = useState(ownerAuth.id || 'chirag');
+      const [loginPassword, setLoginPassword] = useState('');
+      const [loginError, setLoginError] = useState('');
+
+      // Create / Update form state
+      const [newId, setNewId] = useState(ownerAuth.id || 'chirag');
+      const [newPassword, setNewPassword] = useState('');
+      const [confirmPassword, setConfirmPassword] = useState('');
+      const [msg, setMsg] = useState({ text: '', type: '' });
+
+      // Geofence settings
+      const [officeLat, setOfficeLat] = useState(officeGeo.lat || 28.6139);
+      const [officeLon, setOfficeLon] = useState(officeGeo.lon || 77.2090);
+      const [officeRadius, setOfficeRadius] = useState(officeGeo.radiusMeters || 250);
+      const [geoMsg, setGeoMsg] = useState('');
+
+      useEffect(() => {
+        setTab(initialTab);
+        setLoginError('');
+        setMsg({ text: '', type: '' });
+      }, [initialTab]);
+
+      const handleLogin = (e) => {
+        if (e) e.preventDefault();
+        if (loginId.trim().toLowerCase() === ownerAuth.id.toLowerCase() && loginPassword === ownerAuth.password) {
+          onLogin();
+          setLoginError('');
+          if (pendingAction === 'csv') {
+            onExecuteCSV();
+            onClearPendingAction();
+            onClose();
+          } else {
+            onClose();
+          }
+        } else {
+          setLoginError('Invalid Owner ID or Password. Please try again.');
+        }
+      };
+
+      const handleCreate = (e) => {
+        if (e) e.preventDefault();
+        if (!newId.trim()) {
+          setMsg({ text: 'Please enter a valid Owner ID.', type: 'error' });
+          return;
+        }
+        if (!newPassword || newPassword.length < 3) {
+          setMsg({ text: 'Password must be at least 3 characters.', type: 'error' });
+          return;
+        }
+        if (newPassword !== confirmPassword) {
+          setMsg({ text: 'Passwords do not match.', type: 'error' });
+          return;
+        }
+
+        const updated = {
+          ...ownerAuth,
+          id: newId.trim(),
+          password: newPassword,
+          name: 'Chirag',
+          role: 'Owner & Director'
+        };
+
+        onSaveCredentials(updated);
+        setMsg({ text: '✅ Owner ID & Password updated successfully! Logged in as Chirag.', type: 'success' });
+        onLogin();
+        setNewPassword('');
+        setConfirmPassword('');
+      };
+
+      const handleSetCurrentAsOffice = () => {
+        if (!navigator.geolocation) {
+          setGeoMsg('GPS not supported.');
+          return;
+        }
+        setGeoMsg('Detecting location...');
+        navigator.geolocation.getCurrentPosition(
+          (pos) => {
+            const lat = Number(pos.coords.latitude.toFixed(6));
+            const lon = Number(pos.coords.longitude.toFixed(6));
+            setOfficeLat(lat);
+            setOfficeLon(lon);
+            onSaveOfficeGeo({
+              ...officeGeo,
+              lat,
+              lon,
+              radiusMeters: officeRadius
+            });
+            setGeoMsg('✅ Current location saved as Office Coordinates!');
+          },
+          (err) => {
+            setGeoMsg('Location access denied. Please enter coordinates manually.');
+          }
+        );
+      };
+
+      return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-md animate-fade-in">
+          <div className="bg-white dark:bg-slate-900 rounded-3xl max-w-md w-full p-6 shadow-2xl border border-amber-300 dark:border-amber-700/60">
+            {/* Header */}
+            <div className="flex items-center justify-between pb-3 border-b border-slate-200 dark:border-slate-800">
+              <div className="flex items-center gap-2.5">
+                <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-amber-400 via-amber-500 to-orange-500 text-white flex items-center justify-center shadow-md text-xl">
+                  👑
+                </div>
+                <div>
+                  <h3 className="font-extrabold text-slate-900 dark:text-white text-base">
+                    Owner Space — Chirag
+                  </h3>
+                  <span className="text-[11px] text-amber-700 dark:text-amber-400 font-semibold">
+                    Executive Portal & Security Gate
+                  </span>
+                </div>
+              </div>
+              <button onClick={onClose} className="text-slate-400 hover:text-slate-600 text-xl font-bold">&times;</button>
+            </div>
+
+            {/* Tab Buttons */}
+            <div className="mt-4 flex bg-slate-100 dark:bg-slate-800 p-1 rounded-xl text-xs font-bold gap-1">
+              <button
+                onClick={() => setTab('login')}
+                className={`flex-1 py-2 rounded-lg transition-all flex items-center justify-center gap-1 ${
+                  tab === 'login'
+                    ? 'bg-white dark:bg-slate-900 text-amber-700 dark:text-amber-400 shadow-sm'
+                    : 'text-slate-500 hover:text-slate-800'
+                }`}
+              >
+                <Icons.Lock className="w-3.5 h-3.5" />
+                Login
+              </button>
+              <button
+                onClick={() => setTab('create')}
+                className={`flex-1 py-2 rounded-lg transition-all flex items-center justify-center gap-1 ${
+                  tab === 'create'
+                    ? 'bg-white dark:bg-slate-900 text-amber-700 dark:text-amber-400 shadow-sm'
+                    : 'text-slate-500 hover:text-slate-800'
+                }`}
+              >
+                <Icons.Key className="w-3.5 h-3.5" />
+                Set ID & Password
+              </button>
+              <button
+                onClick={() => setTab('geofence')}
+                className={`flex-1 py-2 rounded-lg transition-all flex items-center justify-center gap-1 ${
+                  tab === 'geofence'
+                    ? 'bg-white dark:bg-slate-900 text-amber-700 dark:text-amber-400 shadow-sm'
+                    : 'text-slate-500 hover:text-slate-800'
+                }`}
+              >
+                <Icons.MapPin className="w-3.5 h-3.5" />
+                Office GPS
+              </button>
+            </div>
+
+            {/* TAB 1: LOGIN */}
+            {tab === 'login' && (
+              <div className="mt-4">
+                {isLoggedIn ? (
+                  <div className="text-center py-4 space-y-4">
+                    <div className="w-12 h-12 rounded-full bg-emerald-100 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 mx-auto flex items-center justify-center shadow-sm">
+                      <Icons.CheckCircle className="w-6 h-6" />
+                    </div>
+                    <div>
+                      <h4 className="font-bold text-slate-900 dark:text-white text-base">
+                        Chirag (Owner) is Authenticated
+                      </h4>
+                      <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                        You have full owner authority to download CSV records and inspect verified GPS attendance.
+                      </p>
+                    </div>
+
+                    <div className="flex flex-col gap-2 pt-2">
+                      <button
+                        onClick={() => { onExecuteCSV(); onClose(); }}
+                        className="w-full py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-md flex items-center justify-center gap-2"
+                      >
+                        <Icons.Download className="w-4 h-4" />
+                        Download Attendance CSV Now
+                      </button>
+                      <button
+                        onClick={() => { onLogout(); onClose(); }}
+                        className="w-full py-2 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 text-xs font-semibold hover:bg-slate-100"
+                      >
+                        Lock / Log Out
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <form onSubmit={handleLogin} className="space-y-3.5 text-xs">
+                    {pendingAction === 'csv' && (
+                      <div className="p-3 rounded-xl bg-amber-50 dark:bg-amber-950/50 border border-amber-200 dark:border-amber-800 text-amber-900 dark:text-amber-200 text-xs">
+                        🔒 <strong>Chirag (Owner) Required:</strong> Only the owner can download the employee attendance CSV report. Please enter your credentials.
+                      </div>
+                    )}
+
+                    {loginError && (
+                      <div className="p-2.5 rounded-xl bg-rose-50 dark:bg-rose-950/50 border border-rose-200 dark:border-rose-800 text-rose-700 dark:text-rose-300 text-xs font-semibold">
+                        {loginError}
+                      </div>
+                    )}
+
+                    <div>
+                      <label className="block font-semibold text-slate-600 dark:text-slate-400 mb-1">
+                        Owner ID / Username
+                      </label>
+                      <input
+                        type="text"
+                        value={loginId}
+                        onChange={(e) => setLoginId(e.target.value)}
+                        placeholder="e.g. chirag"
+                        className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white font-medium"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block font-semibold text-slate-600 dark:text-slate-400 mb-1">
+                        Owner Password
+                      </label>
+                      <input
+                        type="password"
+                        value={loginPassword}
+                        onChange={(e) => setLoginPassword(e.target.value)}
+                        placeholder="Enter password"
+                        className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white font-medium"
+                      />
+                      <div className="mt-1 text-[11px] text-slate-400">
+                        Default: ID: <code className="bg-slate-100 dark:bg-slate-800 px-1 py-0.5 rounded font-bold">chirag</code> | Password: <code className="bg-slate-100 dark:bg-slate-800 px-1 py-0.5 rounded font-bold">123</code>
+                      </div>
+                    </div>
+
+                    <div className="pt-2">
+                      <button
+                        type="submit"
+                        className="w-full py-2.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs shadow-md shadow-amber-500/20 transition-all flex items-center justify-center gap-1.5"
+                      >
+                        <Icons.Unlock className="w-4 h-4" />
+                        {pendingAction === 'csv' ? 'Unlock & Download CSV' : 'Unlock Owner Privileges'}
+                      </button>
+                    </div>
+                  </form>
+                )}
+              </div>
+            )}
+
+            {/* TAB 2: CREATE / CHANGE ID & PASSWORD */}
+            {tab === 'create' && (
+              <form onSubmit={handleCreate} className="mt-4 space-y-3 text-xs">
+                <div className="text-slate-500 dark:text-slate-400 text-xs">
+                  Chirag, set your secret Owner ID and Password below. Only this account can export raw attendance CSV.
+                </div>
+
+                {msg.text && (
+                  <div className={`p-2.5 rounded-xl text-xs font-semibold border ${
+                    msg.type === 'success'
+                      ? 'bg-emerald-50 text-emerald-800 border-emerald-200 dark:bg-emerald-950/60 dark:text-emerald-300 dark:border-emerald-800'
+                      : 'bg-rose-50 text-rose-800 border-rose-200 dark:bg-rose-950/60 dark:text-rose-300 dark:border-rose-800'
+                  }`}>
+                    {msg.text}
+                  </div>
+                )}
+
+                <div>
+                  <label className="block font-semibold text-slate-600 dark:text-slate-400 mb-1">
+                    Set Owner ID / Username
+                  </label>
+                  <input
+                    type="text"
+                    value={newId}
+                    onChange={(e) => setNewId(e.target.value)}
+                    placeholder="e.g. chirag"
+                    className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-semibold text-slate-600 dark:text-slate-400 mb-1">
+                    Set New Password
+                  </label>
+                  <input
+                    type="password"
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    placeholder="Enter new password"
+                    className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-semibold text-slate-600 dark:text-slate-400 mb-1">
+                    Confirm New Password
+                  </label>
+                  <input
+                    type="password"
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    placeholder="Re-enter new password"
+                    className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white"
+                  />
+                </div>
+
+                <div className="pt-2">
+                  <button
+                    type="submit"
+                    className="w-full py-2.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs shadow-md transition-all flex items-center justify-center gap-1.5"
+                  >
+                    <Icons.Key className="w-4 h-4" />
+                    Save ID & Password
+                  </button>
+                </div>
+              </form>
+            )}
+
+            {/* TAB 3: OFFICE GEOFENCE SETTINGS */}
+            {tab === 'geofence' && (
+              <div className="mt-4 space-y-3 text-xs">
+                <div className="text-slate-500 dark:text-slate-400 text-xs">
+                  Set the Office GPS Coordinates. The system automatically detects whether employees are genuinely at the office or faking location.
+                </div>
+
+                {geoMsg && (
+                  <div className="p-2.5 rounded-xl bg-emerald-50 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-200 text-xs font-semibold">
+                    {geoMsg}
+                  </div>
+                )}
+
+                <button
+                  type="button"
+                  onClick={handleSetCurrentAsOffice}
+                  className="w-full py-2.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/60 dark:hover:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 font-bold border border-indigo-200 dark:border-indigo-800 flex items-center justify-center gap-1.5"
+                >
+                  <Icons.MapPin className="w-4 h-4" />
+                  Set Current GPS as Office Location
+                </button>
+
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="block font-semibold text-slate-600 dark:text-slate-400 mb-1">Office Latitude</label>
+                    <input
+                      type="number"
+                      step="0.0001"
+                      value={officeLat}
+                      onChange={(e) => setOfficeLat(parseFloat(e.target.value) || 0)}
+                      className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white font-mono"
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-semibold text-slate-600 dark:text-slate-400 mb-1">Office Longitude</label>
+                    <input
+                      type="number"
+                      step="0.0001"
+                      value={officeLon}
+                      onChange={(e) => setOfficeLon(parseFloat(e.target.value) || 0)}
+                      className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white font-mono"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block font-semibold text-slate-600 dark:text-slate-400 mb-1">Office Radius Allowance (meters)</label>
+                  <input
+                    type="number"
+                    value={officeRadius}
+                    onChange={(e) => setOfficeRadius(parseInt(e.target.value) || 250)}
+                    className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white font-mono"
+                  />
+                  <span className="text-[10px] text-slate-400">Within {officeRadius} meters is verified as "In Office". Outside is flagged as Remote / Field.</span>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    onSaveOfficeGeo({
+                      ...officeGeo,
+                      lat: officeLat,
+                      lon: officeLon,
+                      radiusMeters: officeRadius
+                    });
+                    setGeoMsg('✅ Office Coordinates saved!');
+                  }}
+                  className="w-full py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold shadow-md"
+                >
+                  Save Office Geofence
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      );
+    }
+
+    // Modal component to manually adjust or enter timestamps
+    function ManualEditModal({ employee, record, currentDateStr, onClose, onSave }) {
+      const [inTime, setInTime] = useState(record.inTime || '');
+      const [lunchOut, setLunchOut] = useState(record.lunchOut || '');
+      const [lunchIn, setLunchIn] = useState(record.lunchIn || '');
+      const [outTime, setOutTime] = useState(record.outTime || '');
+      const [workLocation, setWorkLocation] = useState(record.workLocation || 'Office');
+
+      return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-sm animate-fade-in">
+          <div className="bg-white dark:bg-slate-900 rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-200 dark:border-slate-800">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-200 dark:border-slate-800">
+              <div className="flex items-center gap-2.5">
+                <div className={`w-8 h-8 rounded-lg flex items-center justify-center font-bold text-xs ${employee.avatarBg || 'bg-indigo-100 text-indigo-700'}`}>
+                  {employee.name.substring(0, 2).toUpperCase()}
+                </div>
+                <div>
+                  <h4 className="font-bold text-slate-900 dark:text-white">Adjust Timings for {employee.name}</h4>
+                  <span className="text-xs text-slate-400">{currentDateStr}</span>
+                </div>
+              </div>
+              <button onClick={onClose} className="text-slate-400 hover:text-slate-600 text-lg font-bold">&times;</button>
+            </div>
+
+            <div className="mt-4 space-y-3.5 text-xs">
+              <div>
+                <label className="block font-semibold text-slate-600 dark:text-slate-400 mb-1">Work Mode</label>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setWorkLocation('Office')}
+                    className={`flex-1 py-1.5 rounded-lg font-bold text-xs border ${workLocation === 'Office' ? 'bg-indigo-600 text-white border-indigo-600' : 'border-slate-200 dark:border-slate-700'}`}
+                  >
+                    🏢 Office
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setWorkLocation('Field')}
+                    className={`flex-1 py-1.5 rounded-lg font-bold text-xs border ${workLocation === 'Field' ? 'bg-amber-600 text-white border-amber-600' : 'border-slate-200 dark:border-slate-700'}`}
+                  >
+                    🚗 Field
+                  </button>
+                </div>
+              </div>
+
+              <div>
+                <label className="block font-semibold text-slate-600 dark:text-slate-400 mb-1">Office In Time (e.g. 10:00 AM)</label>
+                <input
+                  type="text"
+                  value={inTime}
+                  onChange={(e) => setInTime(e.target.value)}
+                  placeholder="10:00 AM"
+                  className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white font-mono"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block font-semibold text-slate-600 dark:text-slate-400 mb-1">Lunch Out (2:00 PM)</label>
+                  <input
+                    type="text"
+                    value={lunchOut}
+                    onChange={(e) => setLunchOut(e.target.value)}
+                    placeholder="02:00 PM"
+                    className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="block font-semibold text-slate-600 dark:text-slate-400 mb-1">Lunch In (2:45 PM)</label>
+                  <input
+                    type="text"
+                    value={lunchIn}
+                    onChange={(e) => setLunchIn(e.target.value)}
+                    placeholder="02:45 PM"
+                    className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white font-mono"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block font-semibold text-slate-600 dark:text-slate-400 mb-1">Office Out Time (e.g. 06:30 PM)</label>
+                <input
+                  type="text"
+                  value={outTime}
+                  onChange={(e) => setOutTime(e.target.value)}
+                  placeholder="06:30 PM"
+                  className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white font-mono"
+                />
+              </div>
+            </div>
+
+            <div className="mt-6 flex gap-2">
+              <button
+                onClick={() => onSave({ ...record, inTime, lunchOut, lunchIn, outTime, workLocation })}
+                className="flex-1 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shadow-md transition-all"
+              >
+                Save Changes
+              </button>
+              <button
+                onClick={onClose}
+                className="px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 font-semibold text-xs hover:bg-slate-100"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // Modal to Manage Staff
+    function ManageStaffModal({ employees, onClose, onSave, onResetDefaults }) {
+      const [list, setList] = useState([...employees]);
+      const [newName, setNewName] = useState('');
+      const [newRole, setNewRole] = useState('Robotics Engineer');
+
+      const handleAdd = () => {
+        if (!newName.trim()) return;
+        const newId = `EMP${String(list.length + 1).padStart(2, '0')}`;
+        const newEmp = {
+          id: newId,
+          name: newName.trim(),
+          role: newRole.trim() || 'Robotics Engineer',
+          avatarBg: 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300'
+        };
+        setList([...list, newEmp]);
+        setNewName('');
+        setNewRole('Robotics Engineer');
+      };
+
+      const handleRemove = (id) => {
+        setList(list.filter(e => e.id !== id));
+      };
+
+      return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-sm animate-fade-in">
+          <div className="bg-white dark:bg-slate-900 rounded-3xl max-w-lg w-full p-6 shadow-2xl border border-slate-200 dark:border-slate-800">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-200 dark:border-slate-800">
+              <div>
+                <h4 className="font-bold text-slate-900 dark:text-white text-base">Office Staff Management</h4>
+                <p className="text-xs text-slate-400">Total {list.length} Staff Members &bull; <strong className="text-amber-600">Owner: Chirag</strong></p>
+              </div>
+              <button onClick={onClose} className="text-slate-400 hover:text-slate-600 text-xl font-bold">&times;</button>
+            </div>
+
+            {/* Current Staff List */}
+            <div className="mt-4 max-h-56 overflow-y-auto space-y-2 pr-1">
+              {list.map((emp, index) => (
+                <div key={emp.id} className="flex items-center justify-between p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-xs">
+                  <div className="flex items-center gap-2.5">
+                    <span className="font-mono text-slate-400">{index + 1}.</span>
+                    <div>
+                      <div className="font-bold text-slate-900 dark:text-white">{emp.name}</div>
+                      <div className="text-[11px] text-slate-500">{emp.role}</div>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => handleRemove(emp.id)}
+                    className="text-slate-400 hover:text-rose-500 p-1"
+                    title="Remove"
+                  >
+                    &times;
+                  </button>
+                </div>
+              ))}
+            </div>
+
+            {/* Add New Employee */}
+            <div className="mt-4 pt-3 border-t border-slate-200 dark:border-slate-800">
+              <span className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-2">Add New Employee</span>
+              <div className="grid grid-cols-2 gap-2 text-xs">
+                <input
+                  type="text"
+                  placeholder="Employee Name"
+                  value={newName}
+                  onChange={(e) => setNewName(e.target.value)}
+                  className="px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white"
+                />
+                <input
+                  type="text"
+                  placeholder="Role (e.g. Robotics Engineer)"
+                  value={newRole}
+                  onChange={(e) => setNewRole(e.target.value)}
+                  className="px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white"
+                />
+              </div>
+              <button
+                onClick={handleAdd}
+                className="mt-2 w-full py-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-bold text-xs transition-colors"
+              >
+                + Add to List
+              </button>
+            </div>
+
+            {/* Footer Buttons */}
+            <div className="mt-6 flex items-center justify-between gap-2">
+              <button
+                onClick={onResetDefaults}
+                className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline font-medium"
+              >
+                Reset Default Staff
+              </button>
+              <div className="flex gap-2">
+                <button
+                  onClick={onClose}
+                  className="px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-600 dark:text-slate-300"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={() => onSave(list)}
+                  className="px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shadow-md"
+                >
+                  Save Staff
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // Render React App
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<App />);
+  </script>
+</body>
+</html>
